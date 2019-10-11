@@ -25,6 +25,7 @@
 #include <sys/ioctl.h>
 #include <linux/netfilter_ipv4.h>
 #include "ltun.h"
+#include "rawkcp.h"
 
 #ifndef EAGAIN
 #define EAGAIN EWOULDBLOCK
@@ -46,9 +47,9 @@ static void remote_recv_cb(EV_P_ ev_io *w, int revents);
 static void remote_send_cb(EV_P_ ev_io *w, int revents);
 static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents);
 
-static remote_t *new_remote(int fd);
+static remote_t *new_remote(rawkcp *rkcp);
 static server_t *new_server(int fd, listen_ctx_t *listener);
-static remote_t *connect_to_remote(EV_P_ struct addrinfo *res, server_t *server);
+static remote_t *connect_to_remote(void);
 
 static void free_remote(remote_t *remote);
 static void close_and_free_remote(EV_P_ remote_t *remote);
@@ -155,39 +156,17 @@ int create_and_bind(const char *host, const char *port)
 	return listen_sock;
 }
 
-static remote_t *connect_to_remote(EV_P_ struct addrinfo *res, server_t *server)
+static remote_t *connect_to_remote(void)
 {
-	int sockfd;
+	rawkcp *rkcp;
 
-	// initialize remote socks
-	sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-	if (sockfd == -1) {
-		perror("socket");
-		close(sockfd);
+	rkcp = rawkcp_new();
+	if (!rkcp)
 		return NULL;
-	}
 
-	int opt = 1;
-	setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
-#ifdef SO_NOSIGPIPE
-	setsockopt(sockfd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
-#endif
-	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+	remote_t *remote = new_remote(rkcp);
 
-	// setup remote socks
-
-	if (setnonblocking(sockfd) == -1)
-		perror("setnonblocking");
-
-	remote_t *remote = new_remote(sockfd);
-
-	int r = connect(sockfd, res->ai_addr, res->ai_addrlen);
-
-	if (r == -1 && errno != EINPROGRESS) {
-		perror("connect");
-		close_and_free_remote(EV_A_ remote);
-		return NULL;
-	}
+	//close_and_free_remote(EV_A_ remote);
 
 	return remote;
 }
@@ -474,7 +453,7 @@ static void remote_send_cb(EV_P_ ev_io *w, int revents)
 	}
 }
 
-static remote_t *new_remote(int fd)
+static remote_t *new_remote(rawkcp *rkcp)
 {
 	if (verbose) {
 		remote_conn++;
@@ -490,15 +469,15 @@ static remote_t *new_remote(int fd)
 	remote->buf->idx = 0;
 	memset(remote->recv_ctx, 0, sizeof(remote_ctx_t));
 	memset(remote->send_ctx, 0, sizeof(remote_ctx_t));
-	remote->fd                  = fd;
+	remote->rkcp                  = rkcp;
 	remote->recv_ctx->remote    = remote;
 	remote->recv_ctx->connected = 0;
 	remote->send_ctx->remote    = remote;
 	remote->send_ctx->connected = 0;
 	remote->server              = NULL;
 
-	ev_io_init(&remote->recv_ctx->io, remote_recv_cb, fd, EV_READ);
-	ev_io_init(&remote->send_ctx->io, remote_send_cb, fd, EV_WRITE);
+	//ev_io_init(&remote->recv_ctx->io, remote_recv_cb, fd, EV_READ);
+	//ev_io_init(&remote->send_ctx->io, remote_send_cb, fd, EV_WRITE);
 
 	return remote;
 }
@@ -638,25 +617,7 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 	ev_timer_start(EV_A_ & server->recv_ctx->watcher);
 
 	if (server->stage == STAGE_INIT) {
-		struct sockaddr_in *addr;
-		struct addrinfo info;
-		struct sockaddr_storage storage;
-		memset(&info, 0, sizeof(struct addrinfo));
-		memset(&storage, 0, sizeof(struct sockaddr_storage));
-
-		if (getdestaddr(server->fd, &storage) != 0) {
-			perror("getdestaddr");
-			close_and_free_server(EV_A_ server);
-			return;
-		}
-		addr = (struct sockaddr_in *)&storage;
-		info.ai_family   = AF_INET;
-		info.ai_socktype = SOCK_STREAM;
-		info.ai_protocol = IPPROTO_TCP;
-		info.ai_addrlen  = sizeof(struct sockaddr_in);
-		info.ai_addr     = (struct sockaddr *)addr;
-
-		remote_t *remote = connect_to_remote(EV_A_ & info, server);
+		remote_t *remote = connect_to_remote();
 		if (remote == NULL) {
 			printf("connect error\n");
 			close_and_free_server(EV_A_ server);
@@ -665,7 +626,7 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 			server->remote = remote;
 			remote->server = server;
 			//ev_io_start(EV_A_ & remote->recv_ctx->io);
-			ev_io_start(EV_A_ & remote->send_ctx->io);
+			//ev_io_start(EV_A_ & remote->send_ctx->io);
 		}
 	}
 }

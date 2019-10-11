@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <time.h>
 #include <ev.h>
+#include "rawkcp.h"
 
 typedef struct {
 	int idx;
@@ -46,6 +47,7 @@ typedef struct remote_ctx {
 
 typedef struct remote {
 	int fd;
+	rawkcp *rkcp;
 
 	buffer_t *buf;
 
