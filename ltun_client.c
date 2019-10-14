@@ -76,15 +76,6 @@ static struct ev_signal sigint_watcher;
 static struct ev_signal sigterm_watcher;
 static struct ev_signal sigchld_watcher;
 
-int setnonblocking(int fd)
-{
-	int flags;
-	if (-1 == (flags = fcntl(fd, F_GETFL, 0))) {
-		flags = 0;
-	}
-	return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-}
-
 int create_and_bind(const char *host, const char *port)
 {
 	struct addrinfo hints;
@@ -232,7 +223,8 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	} else if (server->stage == STAGE_INIT) {
 		// waiting on remote connected event
 		ev_io_stop(EV_A_ & server_recv_ctx->io);
-		ev_io_start(EV_A_ & remote->send_ctx->io);
+		//ev_io_start(EV_A_ & remote->send_ctx->io);
+		//FIXME start remote send
 		return;
 	}
 }

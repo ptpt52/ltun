@@ -7,7 +7,7 @@ SERVER_BIN = ltun_s
 CFLAGS += -Werror -std=gnu99
 
 HDRS = ltun.h ikcp.h
-CLIENT_SRCS = ltun_client.c ikcp.c rawkcp.c
+CLIENT_SRCS = ltun_client.c ikcp.c rawkcp.c endpoint.c
 SERVER_SRCS = ltun_server.c ikcp.c
 
 .SUFFIXES: .c .o

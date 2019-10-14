@@ -1,6 +1,8 @@
 #ifndef _LTUN_H
 #define _LTUN_H
 
+#include <unistd.h>
+#include <fcntl.h>
 #include <stddef.h>
 #include <time.h>
 #include <ev.h>
@@ -9,7 +11,7 @@
 typedef struct {
 	int idx;
 	int len;
-#define BUF_SIZE 2048
+#define BUF_SIZE 2040
 	unsigned char data[BUF_SIZE];
 } buffer_t;
 
@@ -74,11 +76,19 @@ typedef struct remote {
 #define MAX_REQUEST_TIMEOUT 30
 #define MAX_REMOTE_NUM 10
 
-void
-FATAL(const char *msg)
+static inline void FATAL(const char *msg)
 {
 	fprintf(stderr, "%s", msg);
 	exit(-1);
+}
+
+static inline int setnonblocking(int fd)
+{
+	int flags;
+	if (-1 == (flags = fcntl(fd, F_GETFL, 0))) {
+		flags = 0;
+	}
+	return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
 #endif // _LTUN_H
