@@ -191,7 +191,7 @@ static void endpoint_repeat_send_to_ktun(EV_P_ ev_timer *watcher, int revents)
 	ev_timer_again(EV_A_ & endpoint->watcher);
 }
 
-int p2pool_getaddrinfo(const char *host, const char *port, __be32 *real_addr, __be16 *real_port)
+int endpoint_getaddrinfo(const char *host, const char *port, __be32 *real_addr, __be16 *real_port)
 {
 	struct addrinfo hints;
 	struct addrinfo *result, *rp;
@@ -238,7 +238,7 @@ int p2pool_getaddrinfo(const char *host, const char *port, __be32 *real_addr, __
 	return 0;
 }
 
-int p2pool_create_endpoint_fd(const char *host, const char *port)
+int endpoint_create_fd(const char *host, const char *port)
 {
 	struct addrinfo hints;
 	struct addrinfo *result, *rp;
@@ -302,7 +302,7 @@ int p2pool_create_endpoint_fd(const char *host, const char *port)
 	return listen_sock;
 }
 
-endpoint_t *p2pool_new_endpoint(int fd)
+endpoint_t *endpoint_new(int fd)
 {
 	endpoint_t *endpoint = malloc(sizeof(endpoint_t));
 	memset(endpoint, 0, sizeof(endpoint_t));
@@ -329,42 +329,4 @@ endpoint_t *p2pool_new_endpoint(int fd)
 	ev_timer_init(&endpoint->watcher, endpoint_repeat_send_to_ktun, 0.1, 2.0);
 
 	return endpoint;
-}
-
-int _main(int argc, char **argv)
-{
-	int fd;
-	endpoint_t *endpoint;
-	struct ev_loop *loop = EV_DEFAULT;
-	unsigned char mac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-
-	fd = p2pool_create_endpoint_fd("0.0.0.0", "0");
-	if (fd == -1) {
-		FATAL("bind() error");
-	}
-	setnonblocking(fd);
-
-	endpoint = p2pool_new_endpoint(fd);
-
-	if (endpoint == NULL) {
-		FATAL("p2pool_new_endpoint error");
-	}
-
-	memcpy(endpoint->smac, mac, 6);
-
-	if (p2pool_getaddrinfo("192.168.16.1", "910", &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
-		FATAL("p2pool_getaddrinfo error");
-	}
- 
-	ev_io_start(loop, &endpoint->recv_ctx->io);
-	//ev_io_start(loop, &endpoint->send_ctx->io);
-	ev_timer_start(EV_A_ & endpoint->watcher);
-
-	puts("running");
-
-	ev_run(loop, 0);
-
-	//TODO clean up
-
-	return 0;
 }

@@ -26,6 +26,7 @@
 #include <linux/netfilter_ipv4.h>
 #include "ltun.h"
 #include "rawkcp.h"
+#include "endpoint.h"
 
 #ifndef EAGAIN
 #define EAGAIN EWOULDBLOCK
@@ -627,6 +628,8 @@ void usage()
 
 int main(int argc, char **argv)
 {
+	endpoint_t *endpoint;
+	int fd;
 	int c;
 	char *timeout   = NULL;
 	char *server_port = "1080";
@@ -719,12 +722,32 @@ int main(int argc, char **argv)
 		printf("tcp server listening at %s:%s\n", host ? host : "0.0.0.0", server_port);
 	}
 
+	fd = endpoint_create_fd("0.0.0.0", "0");
+	if (fd == -1) {
+		FATAL("endpoint_create_fd error");
+	}
+	setnonblocking(fd);
+	
+	endpoint = endpoint_new(fd);
+	if (endpoint == NULL) {
+		FATAL("endpoint_new error");
+	}
+
+	unsigned char mac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
+	memcpy(endpoint->smac, mac, 6);
+
+	if (endpoint_getaddrinfo("192.168.16.1", "910", &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
+		FATAL("endpoint_getaddrinfo error");
+	}
 
 	if (geteuid() == 0) {
 		printf("running from root user\n");
 	}
 
 	// start ev loop
+	ev_io_start(loop, &endpoint->recv_ctx->io);
+	ev_timer_start(EV_A_ & endpoint->watcher);
+
 	ev_run(loop, 0);
 
 	if (verbose) {

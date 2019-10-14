@@ -99,4 +99,9 @@ static inline void get_byte6(const unsigned char *p, unsigned char *pv)
 
 #define KTUN_P_MAGIC 0xfffb0099
 
+
+extern endpoint_t *endpoint_new(int fd);
+extern int endpoint_create_fd(const char *host, const char *port);
+extern int endpoint_getaddrinfo(const char *host, const char *port, __be32 *real_addr, __be16 *real_port);
+
 #endif /* _ENDPOINT_H_ */
