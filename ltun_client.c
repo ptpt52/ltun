@@ -222,23 +222,11 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	if (server->stage == STAGE_STREAM) {
 		ev_timer_again(EV_A_ & server->recv_ctx->watcher);
 
-		int s = send(remote->fd, remote->buf->data, remote->buf->len, 0);
-		if (s == -1) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				// no data, wait for send
-				remote->buf->idx = 0;
-				ev_io_stop(EV_A_ & server_recv_ctx->io);
-				ev_io_start(EV_A_ & remote->send_ctx->io);
-			} else {
-				perror("server_recv_send");
-				close_and_free_remote(EV_A_ remote);
-				close_and_free_server(EV_A_ server);
-			}
-		} else if (s < remote->buf->len) {
-			remote->buf->len -= s;
-			remote->buf->idx  = s;
-			ev_io_stop(EV_A_ & server_recv_ctx->io);
-			ev_io_start(EV_A_ & remote->send_ctx->io);
+		int s = ikcp_send(remote->rkcp->kcp, remote->buf->data, remote->buf->len);
+		if (s < 0) {
+			perror("server_recv_send");
+			close_and_free_remote(EV_A_ remote);
+			close_and_free_server(EV_A_ server);
 		}
 		return;
 	} else if (server->stage == STAGE_INIT) {
