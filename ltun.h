@@ -8,7 +8,7 @@
 #include <ev.h>
 #include "rawkcp.h"
 
-typedef struct {
+typedef struct buffer_t {
 	int idx;
 	int len;
 #define BUF_SIZE 2040
@@ -66,9 +66,11 @@ typedef struct remote {
 #define STAGE_WAIT       5  /* Wait for more data               */
 #define STAGE_STREAM     6  /* Stream between client and server */
 
+#ifndef container_of
 #define container_of(ptr, type, member) ({                      \
 		const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
 		(type *)( (char *)__mptr - offsetof(type,member) );})
+#endif
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))

@@ -4,6 +4,11 @@
 
 #include <stddef.h>
 
+#ifndef container_of
+#define container_of(ptr, type, member) \
+    (type *)((char *)(ptr) - (char *) &((type *)0)->member)
+#endif
+
 struct list_head {
 	struct list_head *next, *prev;
 };
@@ -15,7 +20,6 @@ struct hlist_head {
 struct hlist_node {
 	struct hlist_node *next, **pprev;
 };
-
 
 /*
  * Simple doubly linked list implementation.

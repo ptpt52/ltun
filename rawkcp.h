@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include "list.h"
 #include "ikcp.h"
+#include "endpoint.h"
 
 typedef struct RAWKCP {
 	struct hlist_node hnode;
@@ -18,8 +19,12 @@ typedef struct RAWKCP {
 	unsigned short remote_port;
 
 	ikcpcb *kcp;
+	endpoint_t *endpoint;
 } rawkcp;
 
+extern int __rawkcp_init(void);
 extern rawkcp *rawkcp_new(void);
+extern void rawkcp_free(rawkcp *rkcp);
+extern int rawkcp_in(rawkcp *rkcp);
 
 #endif /* _RAWKCP_H_ */

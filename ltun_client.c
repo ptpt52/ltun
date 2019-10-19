@@ -24,6 +24,7 @@
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <linux/netfilter_ipv4.h>
+#include "list.h"
 #include "ltun.h"
 #include "rawkcp.h"
 #include "endpoint.h"
@@ -56,6 +57,36 @@ static void free_remote(remote_t *remote);
 static void close_and_free_remote(EV_P_ remote_t *remote);
 static void free_server(server_t *server);
 static void close_and_free_server(EV_P_ server_t *server);
+
+endpoint_t *default_endpoint = NULL;
+
+int endpoint_attach_rawkcp(endpoint_t *endpoint, rawkcp *rkcp)
+{
+	if (endpoint->rawkcp_count < RAWKCP_MAX_PENDING) {
+		hlist_add_head(&rkcp->hnode, &endpoint->rawkcp_head);
+		endpoint->rawkcp_count++;
+		return 0;
+	}
+
+	return -1;
+}
+
+int rawkcp_attach_endpoint(rawkcp *rkcp, endpoint_t *endpoint)
+{
+	int ret = 0;
+
+	if (endpoint->status == ENDPOINT_ESTABLISHED) {
+		rkcp->remote_addr = endpoint->remote_addr;
+		rkcp->remote_port = endpoint->remote_port;
+		ret = rawkcp_in(rkcp);
+		if (ret != 0) {
+			return ret;
+		}
+		rkcp->endpoint = endpoint;
+	}
+
+	return endpoint_attach_rawkcp(endpoint, rkcp);
+}
 
 int ito = 0;
 int verbose = 0;
@@ -155,6 +186,11 @@ static remote_t *connect_to_remote(void)
 	rkcp = rawkcp_new();
 	if (!rkcp)
 		return NULL;
+
+	if (rawkcp_attach_endpoint(rkcp, default_endpoint) != 0) {
+		rawkcp_free(rkcp);
+		return NULL;
+	}
 
 	remote_t *remote = new_remote(rkcp);
 
@@ -722,6 +758,8 @@ int main(int argc, char **argv)
 		printf("tcp server listening at %s:%s\n", host ? host : "0.0.0.0", server_port);
 	}
 
+	__rawkcp_init();
+
 	fd = endpoint_create_fd("0.0.0.0", "0");
 	if (fd == -1) {
 		FATAL("endpoint_create_fd error");
@@ -739,6 +777,8 @@ int main(int argc, char **argv)
 	if (endpoint_getaddrinfo("192.168.16.1", "910", &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
 		FATAL("endpoint_getaddrinfo error");
 	}
+
+	default_endpoint = endpoint;
 
 	if (geteuid() == 0) {
 		printf("running from root user\n");

@@ -117,7 +117,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			endpoint->remote_addr = dip;
 			endpoint->remote_port = dport;
 			set_byte6(endpoint->dmac, dmac);
-			endpoint->send_ctx->status = 1;
+			endpoint->status = 1;
 			ev_timer_set(&endpoint->watcher, 0.1, 3.0);
 		} else if(get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000003)) {
 		}
@@ -164,7 +164,7 @@ static void endpoint_repeat_send_to_ktun(EV_P_ ev_timer *watcher, int revents)
 	unsigned char dmac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
 	endpoint_t *endpoint = (endpoint_t *)watcher;
 
-	if (endpoint->send_ctx->status == 0) {
+	if (endpoint->status == 0) {
 		endpoint->remote_addr = endpoint->ktun_addr;
 		endpoint->remote_port = endpoint->ktun_port;
 
@@ -176,7 +176,7 @@ static void endpoint_repeat_send_to_ktun(EV_P_ ev_timer *watcher, int revents)
 		set_byte4(endpoint->send_ctx->buf->data + 4, htonl(0x00000002));
 		set_byte6(endpoint->send_ctx->buf->data + 4 + 4, endpoint->smac);
 		set_byte6(endpoint->send_ctx->buf->data + 4 + 4 + 6, dmac);
-	} else if (endpoint->send_ctx->status == 1) {
+	} else if (endpoint->status == 1) {
 		printf("sendding to remote %u.%u.%u.%u:%u\n", NIPV4_ARG(endpoint->remote_addr), ntohs(endpoint->remote_port));
 
 		endpoint->send_ctx->buf->idx = 0;

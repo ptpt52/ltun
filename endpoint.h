@@ -9,6 +9,7 @@
 #include <time.h>
 #include <ev.h>
 #include <sys/types.h>
+#include "list.h"
 
 # if __BYTE_ORDER == __LITTLE_ENDIAN
 
@@ -24,18 +25,20 @@
 
 typedef unsigned short __be16;
 typedef unsigned int __be32;
+struct buffer_t;
 
 typedef struct endpoint_ctx {
 	ev_io io;
-	int status;
 
-	buffer_t *buf;
+	struct buffer_t *buf;
 
 	struct endpoint *endpoint;
 } endpoint_ctx_t;
 
 typedef struct endpoint {
 	ev_timer watcher;
+
+	int status;
 
 	int fd;
 	int conv;
@@ -51,7 +54,15 @@ typedef struct endpoint {
 
 	struct endpoint_ctx *recv_ctx;
 	struct endpoint_ctx *send_ctx;
+#define RAWKCP_MAX_PENDING 64
+	int rawkcp_count;
+	struct hlist_head rawkcp_head;
 } endpoint_t;
+
+#define ENDPOINT_INIT        0
+#define ENDPOINT_SYN_SENT    1
+#define ENDPOINT_ESTABLISHED 2
+#define ENDPOINT_CLOSED      3
 
 static inline unsigned char get_byte1(const unsigned char *p)
 {
