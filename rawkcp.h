@@ -11,20 +11,23 @@
 #include "ikcp.h"
 #include "endpoint.h"
 
-typedef struct RAWKCP {
+typedef struct rawkcp_t {
 	struct hlist_node hnode;
 
-	unsigned int conv;
-	unsigned int remote_addr;
-	unsigned short remote_port;
-
 	ikcpcb *kcp;
+	unsigned int conv;
+	__be32 remote_addr;
+	__be16 remote_port;
+
+	unsigned char remote_id[6];
+
+	peer_t *peer;
 	endpoint_t *endpoint;
-} rawkcp;
+} rawkcp_t;
 
 extern int __rawkcp_init(void);
-extern rawkcp *rawkcp_new(void);
-extern void rawkcp_free(rawkcp *rkcp);
-extern int rawkcp_in(rawkcp *rkcp);
+extern rawkcp_t *rawkcp_new(unsigned int conv);
+extern void rawkcp_free(rawkcp_t *rkcp);
+extern int rawkcp_insert(rawkcp_t *rkcp);
 
 #endif /* _RAWKCP_H_ */

@@ -49,9 +49,9 @@ static void remote_recv_cb(EV_P_ ev_io *w, int revents);
 static void remote_send_cb(EV_P_ ev_io *w, int revents);
 static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents);
 
-static remote_t *new_remote(rawkcp *rkcp);
+static remote_t *new_remote(rawkcp_t *rkcp);
 static server_t *new_server(int fd, listen_ctx_t *listener);
-static remote_t *connect_to_remote(void);
+static remote_t *connect_to_remote(unsigned char *remote_id);
 
 static void free_remote(remote_t *remote);
 static void close_and_free_remote(EV_P_ remote_t *remote);
@@ -60,7 +60,7 @@ static void close_and_free_server(EV_P_ server_t *server);
 
 endpoint_t *default_endpoint = NULL;
 
-int endpoint_attach_rawkcp(endpoint_t *endpoint, rawkcp *rkcp)
+int endpoint_attach_rawkcp(endpoint_t *endpoint, rawkcp_t *rkcp)
 {
 	if (endpoint->rawkcp_count < RAWKCP_MAX_PENDING) {
 		hlist_add_head(&rkcp->hnode, &endpoint->rawkcp_head);
@@ -71,17 +71,21 @@ int endpoint_attach_rawkcp(endpoint_t *endpoint, rawkcp *rkcp)
 	return -1;
 }
 
-int rawkcp_attach_endpoint(rawkcp *rkcp, endpoint_t *endpoint)
+int rawkcp_attach_endpoint(rawkcp_t *rkcp, endpoint_t *endpoint)
 {
 	int ret = 0;
+	peer_t *peer;
 
-	if (endpoint->status == ENDPOINT_ESTABLISHED) {
-		rkcp->remote_addr = endpoint->remote_addr;
-		rkcp->remote_port = endpoint->remote_port;
-		ret = rawkcp_in(rkcp);
+	peer = endpoint_peer_lookup(rkcp->remote_id);
+
+	if (peer != NULL ) {
+		rkcp->remote_addr = peer->addr;
+		rkcp->remote_port = peer->port;
+		ret = rawkcp_insert(rkcp);
 		if (ret != 0) {
 			return ret;
 		}
+		rkcp->peer = peer;
 		rkcp->endpoint = endpoint;
 	}
 
@@ -179,11 +183,47 @@ int create_and_bind(const char *host, const char *port)
 	return listen_sock;
 }
 
-static remote_t *connect_to_remote(void)
+static int ltun_select_remote_id(unsigned char *remote_id)
 {
-	rawkcp *rkcp;
+	static unsigned char my_id[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0xAA};
+	memcpy(remote_id, my_id, 6);
+	return 0;
+}
 
-	rkcp = rawkcp_new();
+static unsigned int rawkcp_conv_alloc(int type)
+{
+	/* conv low range [1,0x7fffffff]
+	 * conv high range [0x80000001,0xffffffff]
+	 */
+	static unsigned int conv_low  = 0x00000001;
+	static unsigned int conv_high = 0x80000001;
+	unsigned int conv;
+
+	if (type != 0) {
+		conv = conv_high;
+		conv_high = (conv_high + 1) % 0x80000000 + 0x80000000;
+		if (conv_high == 0x80000000)
+			conv_high++;
+		return conv;
+	}
+
+	conv = conv_low;
+	conv_low = (conv_low + 1) % 0x80000000;
+	if (conv_low == 0)
+		conv_low++;
+	return conv;
+}
+
+static remote_t *connect_to_remote(unsigned char *remote_id)
+{
+	unsigned int conv;
+	int conv_type;
+	rawkcp_t *rkcp;
+
+	conv_type = id_is_gt(default_endpoint->id, remote_id);
+	conv = rawkcp_conv_alloc(conv_type);
+
+	rkcp = rawkcp_new(conv);
 	if (!rkcp)
 		return NULL;
 
@@ -470,7 +510,7 @@ static void remote_send_cb(EV_P_ ev_io *w, int revents)
 	}
 }
 
-static remote_t *new_remote(rawkcp *rkcp)
+static remote_t *new_remote(rawkcp_t *rkcp)
 {
 	if (verbose) {
 		remote_conn++;
@@ -634,7 +674,13 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 	ev_timer_start(EV_A_ & server->recv_ctx->watcher);
 
 	if (server->stage == STAGE_INIT) {
-		remote_t *remote = connect_to_remote();
+		unsigned char remote_id[6];
+		if (ltun_select_remote_id(remote_id) != 0) {
+			printf("not remote_id found\n");
+			close_and_free_server(EV_A_ server);
+			return;
+		}
+		remote_t *remote = connect_to_remote(remote_id);
 		if (remote == NULL) {
 			printf("connect error\n");
 			close_and_free_server(EV_A_ server);
@@ -772,7 +818,7 @@ int main(int argc, char **argv)
 	}
 
 	unsigned char mac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-	memcpy(endpoint->smac, mac, 6);
+	memcpy(endpoint->id, mac, 6);
 
 	if (endpoint_getaddrinfo("192.168.16.1", "910", &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
 		FATAL("endpoint_getaddrinfo error");

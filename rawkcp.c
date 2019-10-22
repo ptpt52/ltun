@@ -47,16 +47,15 @@ int __rawkcp_init(void)
 	return 0;
 }
 
-rawkcp *rawkcp_new(void)
+rawkcp_t *rawkcp_new(unsigned int conv)
 {
-	static int conv = 1;
-	rawkcp *rkcp = malloc(sizeof(rawkcp));
+	rawkcp_t *rkcp = malloc(sizeof(rawkcp_t));
 	if (!rkcp)
 		return NULL;
 
 	INIT_HLIST_NODE(&rkcp->hnode);
 
-	rkcp->conv = conv++;
+	rkcp->conv = conv;
 	rkcp->kcp = ikcp_create(rkcp->conv, rkcp);
 	if (!rkcp->kcp) {
 		free(rkcp);
@@ -68,7 +67,7 @@ rawkcp *rawkcp_new(void)
 	return rkcp;
 }
 
-void rawkcp_free(rawkcp *rkcp)
+void rawkcp_free(rawkcp_t *rkcp)
 {
 	if (rkcp->kcp) {
 		ikcp_release(rkcp->kcp);
@@ -77,10 +76,10 @@ void rawkcp_free(rawkcp *rkcp)
 	free(rkcp);
 }
 
-int rawkcp_in(rawkcp *rkcp)
+int rawkcp_insert(rawkcp_t *rkcp)
 {
 	unsigned int hash;
-	rawkcp *pos;
+	rawkcp_t *pos;
 	struct hlist_head *head;
 	
 	hash = jhash_3words(rkcp->conv, rkcp->remote_addr, rkcp->remote_port, rawkcp_rnd) % rawkcp_hash_size;
@@ -89,7 +88,7 @@ int rawkcp_in(rawkcp *rkcp)
 	hlist_for_each_entry(pos, head, hnode) {
 		if (pos->conv == rkcp->conv && pos->remote_addr == rkcp->remote_addr && pos->remote_port == rkcp->remote_port) {
 			//found
-			return 0;
+			return -1;
 		}
 	}
 
@@ -98,10 +97,10 @@ int rawkcp_in(rawkcp *rkcp)
 	return 0;
 }
 
-rawkcp *rawkcp_lookup(unsigned int conv, unsigned int remote_addr, unsigned short remote_port)
+rawkcp_t *rawkcp_lookup(unsigned int conv, unsigned int remote_addr, unsigned short remote_port)
 {
 	unsigned int hash;
-	rawkcp *pos;
+	rawkcp_t *pos;
 	struct hlist_head *head;
 	
 	hash = jhash_3words(conv, remote_addr, remote_port, rawkcp_rnd) % rawkcp_hash_size;

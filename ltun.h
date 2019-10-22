@@ -49,7 +49,7 @@ typedef struct remote_ctx {
 
 typedef struct remote {
 	int fd;
-	rawkcp *rkcp;
+	rawkcp_t *rkcp;
 
 	buffer_t *buf;
 

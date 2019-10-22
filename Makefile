@@ -1,4 +1,4 @@
-INCS += -I..
+INCS += -I.
 LIBS += -L. -lev -lm
 
 CLIENT_BIN = ltun_c

@@ -5,10 +5,12 @@
 #ifndef _ENDPOINT_H_
 #define _ENDPOINT_H_
 
+#include <string.h>
 #include <stddef.h>
 #include <time.h>
 #include <ev.h>
 #include <sys/types.h>
+#include <arpa/inet.h>
 #include "list.h"
 
 # if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -39,18 +41,12 @@ typedef struct endpoint {
 	ev_timer watcher;
 
 	int status;
+	unsigned char id[6];
 
 	int fd;
-	int conv;
-	__be32 local_addr;
-	__be16 local_port;
-	__be32 remote_addr;
-	__be16 remote_port;
+
 	__be32 ktun_addr;
 	__be16 ktun_port;
-
-	unsigned char smac[6];
-	unsigned char dmac[6];
 
 	struct endpoint_ctx *recv_ctx;
 	struct endpoint_ctx *send_ctx;
@@ -63,6 +59,13 @@ typedef struct endpoint {
 #define ENDPOINT_SYN_SENT    1
 #define ENDPOINT_ESTABLISHED 2
 #define ENDPOINT_CLOSED      3
+
+typedef struct peer_t {
+	struct hlist_node hnode;
+	unsigned char id[6];
+	__be32 addr;
+	__be16 port;
+} peer_t;
 
 static inline unsigned char get_byte1(const unsigned char *p)
 {
@@ -108,11 +111,42 @@ static inline void get_byte6(const unsigned char *p, unsigned char *pv)
     memcpy(pv, p, 6);
 }
 
+static inline int id_is_gt(const unsigned char *id1, const unsigned char *id2)
+{
+	unsigned int ai, bi;
+	unsigned short as, bs;
+
+	ai = get_byte4(id1);
+	bi = get_byte4(id2);
+	if (ntohl(ai) > ntohl(bi)) {
+		return 1;
+	}
+	as = get_byte2(id1 + 4);
+	bs = get_byte2(id2 + 4);
+	if (ntohs(as) > ntohs(bs)) {
+		return 1;
+	}
+
+	return 0;
+}
+
+static inline int id_is_lt(const unsigned char *id1, const unsigned char *id2)
+{
+	return id_is_gt(id2, id1);
+}
+
+static inline int id_is_eq(const unsigned char *id1, const unsigned char *id2)
+{
+	return memcmp(id1, id2, 6);
+}
+
 #define KTUN_P_MAGIC 0xfffb0099
 
 
 extern endpoint_t *endpoint_new(int fd);
 extern int endpoint_create_fd(const char *host, const char *port);
 extern int endpoint_getaddrinfo(const char *host, const char *port, __be32 *real_addr, __be16 *real_port);
+
+extern peer_t *endpoint_peer_lookup(unsigned char *id);
 
 #endif /* _ENDPOINT_H_ */
