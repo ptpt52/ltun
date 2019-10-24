@@ -40,6 +40,20 @@
 
 #define P2POOL_DEFAULT_PORT 9102
 
+void default_eb_recycle(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb)
+{
+	free(eb);
+}
+
+void endpoint_buffer_recycle(EV_P_ endpoint_t *endpoint, endpoint_buffer_t *eb)
+{
+	if (eb->recycle) {
+		eb->recycle(EV_A_ endpoint, eb);
+	} else {
+		free(eb);
+	}
+}
+
 static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 {
 	struct sockaddr_in addr;
@@ -182,6 +196,7 @@ static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 		}
 
 		list_del(&pos->head);
+		endpoint_buffer_recycle(EV_A_ endpoint, pos);
 		if (++count == 16)
 			break;
 	}
@@ -391,6 +406,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
 	set_byte6(eb->buf.data + 4 + 4 + 6, id); //dmac
 
+	eb->recycle = default_eb_recycle;
 	list_add_tail(&endpoint->send_ctx->buf_list, &eb->head);
 
 	ev_io_start(EV_A_ & endpoint->send_ctx->io);

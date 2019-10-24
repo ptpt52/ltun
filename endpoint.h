@@ -83,6 +83,7 @@ typedef struct endpoint_buffer_t {
 	__be32 addr;
 	__be16 port;
 	struct buffer_t buf;
+	void (*recycle)(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb);
 } endpoint_buffer_t;
 
 static inline unsigned char get_byte1(const unsigned char *p)
