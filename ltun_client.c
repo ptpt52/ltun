@@ -186,8 +186,8 @@ int create_and_bind(const char *host, const char *port)
 
 static int ltun_select_remote_id(unsigned char *remote_id)
 {
-	static unsigned char my_id[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0xAA};
-	memcpy(remote_id, my_id, 6);
+	static unsigned char remote_id[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0xAA};
+	memcpy(remote_id, remote_id, 6);
 	return 0;
 }
 

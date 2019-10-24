@@ -166,6 +166,6 @@ extern int endpoint_create_fd(const char *host, const char *port);
 extern int endpoint_getaddrinfo(const char *host, const char *port, __be32 *real_addr, __be16 *real_port);
 
 extern peer_t *endpoint_peer_lookup(unsigned char *id);
-extern int endpoint_connect_to_peer(EV_P_ endpoint_t *ep, unsigned char *id);
+extern int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id);
 
 #endif /* _ENDPOINT_H_ */

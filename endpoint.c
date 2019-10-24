@@ -113,9 +113,32 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
 					NIPV4_ARG(sip), ntohs(sport), NIPV4_ARG(dip), ntohs(dport));
 
-			//set_byte6(endpoint->dmac, dmac);
-			endpoint->stage = 1;
-			ev_timer_set(&endpoint->watcher, 0.1, 3.0);
+			//TODO check endpoint->id ==? dmac;
+
+			//send to peer to get connection
+			do {
+				endpoint_buffer_t *eb;
+
+				eb = malloc(sizeof(endpoint_buffer_t));
+
+				INIT_LIST_HEAD(&eb->head);
+				eb->addr = dip;
+				eb->port = dport;
+
+				printf("make connection to peer=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
+
+				eb->buf.idx = 0;
+				eb->buf.len = 4 + 4 + 6 + 6;
+				set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
+				set_byte4(eb->buf.data + 4, htonl(0x00000003));
+				set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
+				set_byte6(eb->buf.data + 4 + 4 + 6, smac); //dmac
+
+				list_add_tail(&endpoint->send_ctx->buf_list, &eb->head);
+
+				ev_io_start(EV_A_ & endpoint->send_ctx->io);
+			} while (0);
+
 		} else if(get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000003)) {
 		}
 	}
@@ -123,41 +146,55 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 {
+	int count = 0;
 	endpoint_ctx_t *endpoint_send_ctx = (endpoint_ctx_t *)w;
 	endpoint_t *endpoint = endpoint_send_ctx->endpoint;
+	endpoint_buffer_t *pos, *n;
 
-	if (endpoint_send_ctx->buf->len == 0) {
-		ev_io_stop(EV_A_ & endpoint_send_ctx->io);
-		return;
-	} else {
-		struct sockaddr_in addr;
+	list_for_each_entry_safe(pos, n, &endpoint_send_ctx->buf_list, head) {
 		ssize_t s;
+		struct sockaddr_in addr;
 
 		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
-		//addr.sin_port = endpoint->remote_port;
-		//addr.sin_addr.s_addr = endpoint->remote_addr;
+		addr.sin_addr.s_addr = pos->addr;
+		addr.sin_port = pos->port;
 
 		s = sendto(endpoint->fd, endpoint_send_ctx->buf->data + endpoint_send_ctx->buf->idx, endpoint_send_ctx->buf->len, 0,
 				(const struct sockaddr *)&addr, sizeof(addr));
 		if (s == -1) {
+			//send fail
 			if (errno != EAGAIN && errno != EWOULDBLOCK) {
 				perror("remote_send_send");
 				ev_io_stop(EV_A_ & endpoint_send_ctx->io);
+				//send error
 			}
+			break;
 		} else if (s < endpoint_send_ctx->buf->len) {
 			endpoint_send_ctx->buf->len -= s;
 			endpoint_send_ctx->buf->idx += s;
+			//send part out
+			break;
 		} else {
 			endpoint_send_ctx->buf->len = 0;
 			endpoint_send_ctx->buf->idx = 0;
-			ev_io_stop(EV_A_ & endpoint_send_ctx->io);
+			//send out ok
 		}
+
+		list_del(&pos->head);
+		if (++count == 16)
+			break;
+	}
+
+	if (list_empty(&endpoint_send_ctx->buf_list)) {
+		//no buff to send
+		ev_io_stop(EV_A_ & endpoint_send_ctx->io);
 	}
 }
 
 static void endpoint_repeat_send_to_ktun(EV_P_ ev_timer *watcher, int revents)
 {
+	/*
 	unsigned char dmac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
 	endpoint_t *endpoint = (endpoint_t *)watcher;
 
@@ -186,6 +223,7 @@ static void endpoint_repeat_send_to_ktun(EV_P_ ev_timer *watcher, int revents)
 
 	ev_io_start(EV_A_ & endpoint->send_ctx->io);
 	ev_timer_again(EV_A_ & endpoint->watcher);
+	*/
 }
 
 int endpoint_getaddrinfo(const char *host, const char *port, __be32 *real_addr, __be16 *real_port)
@@ -334,28 +372,28 @@ peer_t *endpoint_peer_lookup(unsigned char *id)
 	return NULL;
 }
 
-int endpoint_connect_to_peer(EV_P_ endpoint_t *ep, unsigned char *id)
+int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 {
 	endpoint_buffer_t *eb;
 
 	eb = malloc(sizeof(endpoint_buffer_t));
 
 	INIT_LIST_HEAD(&eb->head);
-	eb->addr = ep->ktun_addr;
-	eb->port = ep->ktun_port;
+	eb->addr = endpoint->ktun_addr;
+	eb->port = endpoint->ktun_port;
 
-	printf("endpoint_connect_peer() send to ktun=%u.%u.%u.%u:%u\n", NIPV4_ARG(ep->ktun_addr), ntohs(ep->ktun_port));
+	printf("endpoint_connect_peer() send to ktun=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
 
 	eb->buf.idx = 0;
 	eb->buf.len = 4 + 4 + 6 + 6;
 	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
 	set_byte4(eb->buf.data + 4, htonl(0x00000002));
-	set_byte6(eb->buf.data + 4 + 4, ep->id); //smac
+	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
 	set_byte6(eb->buf.data + 4 + 4 + 6, id); //dmac
 
-	list_add_tail(&ep->send_ctx->buf_list, &eb->head);
+	list_add_tail(&endpoint->send_ctx->buf_list, &eb->head);
 
-	ev_io_start(EV_A_ & ep->send_ctx->io);
+	ev_io_start(EV_A_ & endpoint->send_ctx->io);
 
 	return 0;
 }
