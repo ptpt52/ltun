@@ -25,9 +25,9 @@
 #include <sys/ioctl.h>
 #include <linux/netfilter_ipv4.h>
 #include "list.h"
-#include "ltun.h"
-#include "rawkcp.h"
 #include "endpoint.h"
+#include "rawkcp.h"
+#include "ltun.h"
 
 #ifndef EAGAIN
 #define EAGAIN EWOULDBLOCK
@@ -51,7 +51,7 @@ static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents);
 
 static remote_t *new_remote(rawkcp_t *rkcp);
 static server_t *new_server(int fd, listen_ctx_t *listener);
-static remote_t *connect_to_remote(unsigned char *remote_id);
+static remote_t *connect_to_remote(EV_P_ unsigned char *remote_id);
 
 static void free_remote(remote_t *remote);
 static void close_and_free_remote(EV_P_ remote_t *remote);
@@ -60,18 +60,19 @@ static void close_and_free_server(EV_P_ server_t *server);
 
 endpoint_t *default_endpoint = NULL;
 
-int endpoint_attach_rawkcp(endpoint_t *endpoint, rawkcp_t *rkcp)
+int endpoint_attach_rawkcp(EV_P_ endpoint_t *endpoint, rawkcp_t *rkcp)
 {
 	if (endpoint->rawkcp_count < RAWKCP_MAX_PENDING) {
 		hlist_add_head(&rkcp->hnode, &endpoint->rawkcp_head);
 		endpoint->rawkcp_count++;
+		endpoint_connect_to_peer(EV_A_ endpoint, rkcp->remote_id);
 		return 0;
 	}
 
 	return -1;
 }
 
-int rawkcp_attach_endpoint(rawkcp_t *rkcp, endpoint_t *endpoint)
+int rawkcp_attach_endpoint(EV_P_ rawkcp_t *rkcp, endpoint_t *endpoint)
 {
 	int ret = 0;
 	peer_t *peer;
@@ -89,7 +90,7 @@ int rawkcp_attach_endpoint(rawkcp_t *rkcp, endpoint_t *endpoint)
 		rkcp->endpoint = endpoint;
 	}
 
-	return endpoint_attach_rawkcp(endpoint, rkcp);
+	return endpoint_attach_rawkcp(EV_A_ endpoint, rkcp);
 }
 
 int ito = 0;
@@ -214,7 +215,7 @@ static unsigned int rawkcp_conv_alloc(int type)
 	return conv;
 }
 
-static remote_t *connect_to_remote(unsigned char *remote_id)
+static remote_t *connect_to_remote(EV_P_ unsigned char *remote_id)
 {
 	unsigned int conv;
 	int conv_type;
@@ -227,7 +228,7 @@ static remote_t *connect_to_remote(unsigned char *remote_id)
 	if (!rkcp)
 		return NULL;
 
-	if (rawkcp_attach_endpoint(rkcp, default_endpoint) != 0) {
+	if (rawkcp_attach_endpoint(EV_A_ rkcp, default_endpoint) != 0) {
 		rawkcp_free(rkcp);
 		return NULL;
 	}
@@ -680,7 +681,7 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 			close_and_free_server(EV_A_ server);
 			return;
 		}
-		remote_t *remote = connect_to_remote(remote_id);
+		remote_t *remote = connect_to_remote(EV_A_ remote_id);
 		if (remote == NULL) {
 			printf("connect error\n");
 			close_and_free_server(EV_A_ server);

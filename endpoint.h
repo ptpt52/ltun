@@ -27,23 +27,30 @@
 
 typedef unsigned short __be16;
 typedef unsigned int __be32;
-struct buffer_t;
+
+struct endpoint_t;
+
+typedef struct buffer_t {
+	int idx;
+	int len;
+#define BUF_SIZE 2040
+	unsigned char data[BUF_SIZE];
+} buffer_t;
 
 typedef struct endpoint_ctx {
 	ev_io io;
+	buffer_t *buf;
 
-	struct buffer_t *buf;
-
-	struct endpoint *endpoint;
+	struct endpoint_t *endpoint;
+	struct list_head buf_list;
 } endpoint_ctx_t;
 
-typedef struct endpoint {
+typedef struct endpoint_t {
 	ev_timer watcher;
 
-	int status;
-	unsigned char id[6];
-
 	int fd;
+	int stage;
+	unsigned char id[6];
 
 	__be32 ktun_addr;
 	__be16 ktun_port;
@@ -62,10 +69,21 @@ typedef struct endpoint {
 
 typedef struct peer_t {
 	struct hlist_node hnode;
+#define PEER_INIT 0
+#define PEER_CONNECTED 1
+#define PEER_CLOSE -1
+	int stage;
 	unsigned char id[6];
 	__be32 addr;
 	__be16 port;
 } peer_t;
+
+typedef struct endpoint_buffer_t {
+	struct list_head head;
+	__be32 addr;
+	__be16 port;
+	struct buffer_t buf;
+} endpoint_buffer_t;
 
 static inline unsigned char get_byte1(const unsigned char *p)
 {
@@ -148,5 +166,6 @@ extern int endpoint_create_fd(const char *host, const char *port);
 extern int endpoint_getaddrinfo(const char *host, const char *port, __be32 *real_addr, __be16 *real_port);
 
 extern peer_t *endpoint_peer_lookup(unsigned char *id);
+extern int endpoint_connect_to_peer(EV_P_ endpoint_t *ep, unsigned char *id);
 
 #endif /* _ENDPOINT_H_ */

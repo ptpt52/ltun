@@ -6,14 +6,8 @@
 #include <stddef.h>
 #include <time.h>
 #include <ev.h>
+#include "endpoint.h"
 #include "rawkcp.h"
-
-typedef struct buffer_t {
-	int idx;
-	int len;
-#define BUF_SIZE 2040
-	unsigned char data[BUF_SIZE];
-} buffer_t;
 
 typedef struct listen_ctx {
 	ev_io io;
