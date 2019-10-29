@@ -695,6 +695,30 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 	}
 }
 
+static void parse_optarg_mac(unsigned char *mac, const char *optarg)
+{
+	int n;
+	unsigned int a, b, c, d, e, f;
+	n = sscanf(optarg, "%02x:%02x:%02x:%02x:%02x:%02x", &a, &b, &c, &d, &e, &f);
+	if (n != 6)
+		n = sscanf(optarg, "%02x-%02x-%02x-%02x-%02x-%02x", &a, &b, &c, &d, &e, &f);
+	if (n == 6) {
+		if ((a & 0xff) == a &&
+				(b & 0xff) == b &&
+				(c & 0xff) == c &&
+				(d & 0xff) == d &&
+				(e & 0xff) == e &&
+				(f & 0xff) == f) {
+			mac[0] = a;
+			mac[1] = b;
+			mac[2] = c;
+			mac[3] = d;
+			mac[4] = e;
+			mac[5] = f;
+		}
+	}
+}
+
 void usage()
 {
 	printf("\n");
@@ -719,10 +743,11 @@ int main(int argc, char **argv)
 
 	int server_num = 0;
 	const char *server_host[MAX_REMOTE_NUM];
+	unsigned char mac[6];
 
 	opterr = 0;
 
-	while ((c = getopt_long(argc, argv, "s:l:t:hv", NULL, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "s:l:t:m:hv", NULL, NULL)) != -1) {
 		switch (c) {
 			case 's':
 				if (server_num < MAX_REMOTE_NUM) {
@@ -737,6 +762,9 @@ int main(int argc, char **argv)
 				break;
 			case 'v':
 				verbose = 1;
+				break;
+			case 'm':
+				parse_optarg_mac(mac, optarg);
 				break;
 			case 'h':
 				usage();
@@ -818,8 +846,8 @@ int main(int argc, char **argv)
 		FATAL("endpoint_new error");
 	}
 
-	unsigned char mac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
 	memcpy(endpoint->id, mac, 6);
+	printf("mac: %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
 	if (endpoint_getaddrinfo("192.168.16.1", "910", &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
 		FATAL("endpoint_getaddrinfo error");
