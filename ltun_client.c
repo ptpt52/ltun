@@ -744,10 +744,11 @@ int main(int argc, char **argv)
 	int server_num = 0;
 	const char *server_host[MAX_REMOTE_NUM];
 	unsigned char mac[6];
+	char *ktun = NULL;
 
 	opterr = 0;
 
-	while ((c = getopt_long(argc, argv, "s:l:t:m:hv", NULL, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "s:l:t:m:k:hv", NULL, NULL)) != -1) {
 		switch (c) {
 			case 's':
 				if (server_num < MAX_REMOTE_NUM) {
@@ -765,6 +766,9 @@ int main(int argc, char **argv)
 				break;
 			case 'm':
 				parse_optarg_mac(mac, optarg);
+				break;
+			case 'k':
+				ktun = optarg;
 				break;
 			case 'h':
 				usage();
@@ -849,7 +853,7 @@ int main(int argc, char **argv)
 	memcpy(endpoint->id, mac, 6);
 	printf("mac: %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
-	if (endpoint_getaddrinfo("192.168.16.1", "910", &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
+	if (endpoint_getaddrinfo(ktun, "910", &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
 		FATAL("endpoint_getaddrinfo error");
 	}
 
