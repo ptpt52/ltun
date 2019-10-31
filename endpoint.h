@@ -42,7 +42,7 @@ typedef struct endpoint_ctx {
 	buffer_t *buf;
 
 	struct endpoint_t *endpoint;
-	struct list_head buf_list;
+	struct list_head buf_head;
 } endpoint_ctx_t;
 
 typedef struct endpoint_t {
@@ -57,6 +57,7 @@ typedef struct endpoint_t {
 
 	struct endpoint_ctx *recv_ctx;
 	struct endpoint_ctx *send_ctx;
+	struct list_head watcher_send_buf_head;
 #define RAWKCP_MAX_PENDING 64
 	int rawkcp_count;
 	struct hlist_head rawkcp_head;
@@ -79,11 +80,13 @@ typedef struct peer_t {
 } peer_t;
 
 typedef struct endpoint_buffer_t {
-	struct list_head head;
+	struct list_head list;
+	endpoint_t *endpoint;
+	void (*recycle)(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb);
+	int repeat;
 	__be32 addr;
 	__be16 port;
 	struct buffer_t buf;
-	void (*recycle)(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb);
 } endpoint_buffer_t;
 
 static inline unsigned char get_byte1(const unsigned char *p)

@@ -42,6 +42,10 @@
 
 void default_eb_recycle(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb)
 {
+	if (eb->repeat > 0) {
+		eb->repeat--;
+		list_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
+	}
 	free(eb);
 }
 
@@ -134,8 +138,8 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				endpoint_buffer_t *eb;
 
 				eb = malloc(sizeof(endpoint_buffer_t));
+				memset(eb, 0, sizeof(endpoint_buffer_t));
 
-				INIT_LIST_HEAD(&eb->head);
 				eb->addr = dip;
 				eb->port = dport;
 
@@ -148,7 +152,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
 				set_byte6(eb->buf.data + 4 + 4 + 6, smac); //dmac
 
-				list_add_tail(&endpoint->send_ctx->buf_list, &eb->head);
+				list_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
 				ev_io_start(EV_A_ & endpoint->send_ctx->io);
 			} while (0);
@@ -165,7 +169,7 @@ static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 	endpoint_t *endpoint = endpoint_send_ctx->endpoint;
 	endpoint_buffer_t *pos, *n;
 
-	list_for_each_entry_safe(pos, n, &endpoint_send_ctx->buf_list, head) {
+	list_for_each_entry_safe(pos, n, &endpoint_send_ctx->buf_head, list) {
 		ssize_t s;
 		struct sockaddr_in addr;
 
@@ -195,50 +199,36 @@ static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 			//send out ok
 		}
 
-		list_del(&pos->head);
+		list_del(&pos->list);
 		endpoint_buffer_recycle(EV_A_ endpoint, pos);
 		if (++count == 16)
 			break;
 	}
 
-	if (list_empty(&endpoint_send_ctx->buf_list)) {
+	if (list_empty(&endpoint_send_ctx->buf_head)) {
 		//no buff to send
 		ev_io_stop(EV_A_ & endpoint_send_ctx->io);
 	}
 }
 
-static void endpoint_repeat_send_to_ktun(EV_P_ ev_timer *watcher, int revents)
+static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 {
-	/*
-	unsigned char dmac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+	int need_send = 0;
+	endpoint_buffer_t *pos, *n;
 	endpoint_t *endpoint = (endpoint_t *)watcher;
 
-	if (endpoint->stage == 0) {
-		//endpoint->remote_addr = endpoint->ktun_addr;
-		//endpoint->remote_port = endpoint->ktun_port;
-
-		printf("sendding to ktun %u.%u.%u.%u:%u\n", NIPV4_ARG(endpoint->ktun_addr), ntohs(endpoint->ktun_port));
-
-		endpoint->send_ctx->buf->idx = 0;
-		endpoint->send_ctx->buf->len = 4 + 4 + 6 + 6;
-		set_byte4(endpoint->send_ctx->buf->data, htonl(KTUN_P_MAGIC));
-		set_byte4(endpoint->send_ctx->buf->data + 4, htonl(0x00000002));
-		set_byte6(endpoint->send_ctx->buf->data + 4 + 4, endpoint->id);
-		set_byte6(endpoint->send_ctx->buf->data + 4 + 4 + 6, dmac);
-	} else if (endpoint->stage == 1) {
-		//printf("sendding to remote %u.%u.%u.%u:%u\n", NIPV4_ARG(endpoint->remote_addr), ntohs(endpoint->remote_port));
-
-		endpoint->send_ctx->buf->idx = 0;
-		endpoint->send_ctx->buf->len = 4 + 4 + 6 + 6;
-		set_byte4(endpoint->send_ctx->buf->data, htonl(KTUN_P_MAGIC));
-		set_byte4(endpoint->send_ctx->buf->data + 4, htonl(0x00000003));
-		set_byte6(endpoint->send_ctx->buf->data + 4 + 4, endpoint->id);
-		//set_byte6(endpoint->send_ctx->buf->data + 4 + 4 + 6, endpoint->dmac);
+	printf("next=%p prev=%p\n", endpoint->send_ctx->buf_head.next, endpoint->send_ctx->buf_head.prev);
+	list_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
+		list_del(&pos->list);
+		printf("next=%p prev=%p k\n\n", endpoint->send_ctx->buf_head.next, endpoint->send_ctx->buf_head.prev);
+		list_add_tail(&pos->list, &endpoint->send_ctx->buf_head);
+		need_send = 1;
 	}
 
-	ev_io_start(EV_A_ & endpoint->send_ctx->io);
+	if (need_send) {
+		ev_io_start(EV_A_ & endpoint->send_ctx->io);
+	}
 	ev_timer_again(EV_A_ & endpoint->watcher);
-	*/
 }
 
 int endpoint_getaddrinfo(const char *host, const char *port, __be32 *real_addr, __be16 *real_port)
@@ -356,18 +346,22 @@ endpoint_t *endpoint_new(int fd)
 {
 	endpoint_t *endpoint = malloc(sizeof(endpoint_t));
 	memset(endpoint, 0, sizeof(endpoint_t));
+	INIT_LIST_HEAD(&endpoint->watcher_send_buf_head);
+	INIT_HLIST_HEAD(&endpoint->rawkcp_head);
 
 	endpoint->recv_ctx = malloc(sizeof(endpoint_ctx_t));
 	memset(endpoint->recv_ctx, 0, sizeof(endpoint_ctx_t));
 	endpoint->recv_ctx->buf = malloc(sizeof(buffer_t));
 	endpoint->recv_ctx->buf->len = 0;
 	endpoint->recv_ctx->buf->idx = 0;
+	INIT_LIST_HEAD(&endpoint->recv_ctx->buf_head);
 
 	endpoint->send_ctx = malloc(sizeof(endpoint_ctx_t));
 	memset(endpoint->send_ctx, 0, sizeof(endpoint_ctx_t));
 	endpoint->send_ctx->buf = malloc(sizeof(buffer_t));
 	endpoint->send_ctx->buf->len = 0;
 	endpoint->send_ctx->buf->idx = 0;
+	INIT_LIST_HEAD(&endpoint->send_ctx->buf_head);
 
 	endpoint->fd = fd;
 	endpoint->recv_ctx->endpoint = endpoint;
@@ -376,7 +370,7 @@ endpoint_t *endpoint_new(int fd)
 	ev_io_init(&endpoint->recv_ctx->io, endpoint_recv_cb, endpoint->fd, EV_READ);
 	ev_io_init(&endpoint->send_ctx->io, endpoint_send_cb, endpoint->fd, EV_WRITE);
 
-	ev_timer_init(&endpoint->watcher, endpoint_repeat_send_to_ktun, 0.1, 2.0);
+	ev_timer_init(&endpoint->watcher, endpoint_watcher_send_cb, 1.0, 5.0);
 
 	return endpoint;
 }
@@ -392,8 +386,10 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	endpoint_buffer_t *eb;
 
 	eb = malloc(sizeof(endpoint_buffer_t));
+	memset(eb, 0, sizeof(endpoint_buffer_t));
 
-	INIT_LIST_HEAD(&eb->head);
+	eb->endpoint = endpoint;
+	eb->repeat = 30;
 	eb->addr = endpoint->ktun_addr;
 	eb->port = endpoint->ktun_port;
 
@@ -407,7 +403,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	set_byte6(eb->buf.data + 4 + 4 + 6, id); //dmac
 
 	eb->recycle = default_eb_recycle;
-	list_add_tail(&endpoint->send_ctx->buf_list, &eb->head);
+	list_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
 	ev_io_start(EV_A_ & endpoint->send_ctx->io);
 

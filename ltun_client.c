@@ -856,6 +856,8 @@ int main(int argc, char **argv)
 	if (endpoint_getaddrinfo(ktun, "910", &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
 		FATAL("endpoint_getaddrinfo error");
 	}
+	printf("ktun_addr=%u.%u.%u.%u ktun_port=%u\n",
+			NIPV4_ARG(endpoint->ktun_addr), ntohs(endpoint->ktun_port));
 
 	default_endpoint = endpoint;
 
