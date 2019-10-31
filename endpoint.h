@@ -172,4 +172,6 @@ extern int endpoint_getaddrinfo(const char *host, const char *port, __be32 *real
 extern peer_t *endpoint_peer_lookup(unsigned char *id);
 extern int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id);
 
+extern void endpoint_ktun_start(endpoint_t *endpoint);
+
 #endif /* _ENDPOINT_H_ */

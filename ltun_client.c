@@ -700,6 +700,8 @@ int main(int argc, char **argv)
 	printf("ktun_addr=%u.%u.%u.%u ktun_port=%u\n",
 			NIPV4_ARG(endpoint->ktun_addr), ntohs(endpoint->ktun_port));
 
+	endpoint_ktun_start(endpoint);
+
 	default_endpoint = endpoint;
 
 	if (geteuid() == 0) {

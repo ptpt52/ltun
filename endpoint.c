@@ -45,6 +45,8 @@ void default_eb_recycle(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb
 	if (eb->repeat > 0) {
 		eb->repeat--;
 		list_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
+	} else if (eb->repeat == -1) {
+		list_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
 	} else {
 		free(eb);
 	}
@@ -407,4 +409,28 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	ev_io_start(EV_A_ & endpoint->send_ctx->io);
 
 	return 0;
+}
+
+void endpoint_ktun_start(endpoint_t *endpoint)
+{
+	endpoint_buffer_t *eb;
+
+	eb = malloc(sizeof(endpoint_buffer_t));
+	memset(eb, 0, sizeof(endpoint_buffer_t));
+
+	eb->endpoint = endpoint;
+	eb->repeat = -1;
+	eb->addr = endpoint->ktun_addr;
+	eb->port = endpoint->ktun_port;
+
+	printf("init send to ktun=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
+
+	eb->buf.idx = 0;
+	eb->buf.len = 4 + 4 + 6;
+	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
+	set_byte4(eb->buf.data + 4, htonl(0x00000001));
+	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
+
+	eb->recycle = default_eb_recycle;
+	list_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
 }
