@@ -44,8 +44,12 @@ void default_eb_recycle(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb
 {
 	if (eb->repeat > 0) {
 		eb->repeat--;
+		eb->buf.idx = 0;
+		eb->buf.len = eb->buf_len;
 		list_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
 	} else if (eb->repeat == -1) {
+		eb->buf.idx = 0;
+		eb->buf.len = eb->buf_len;
 		list_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
 	} else {
 		free(eb);
@@ -149,7 +153,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				printf("make connection to peer=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
 
 				eb->buf.idx = 0;
-				eb->buf.len = 4 + 4 + 6 + 6;
+				eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
 				set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
 				set_byte4(eb->buf.data + 4, htonl(0x00000003));
 				set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
@@ -181,8 +185,7 @@ static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 		addr.sin_addr.s_addr = pos->addr;
 		addr.sin_port = pos->port;
 
-		s = sendto(endpoint->fd, endpoint_send_ctx->buf->data + endpoint_send_ctx->buf->idx, endpoint_send_ctx->buf->len, 0,
-				(const struct sockaddr *)&addr, sizeof(addr));
+		s = sendto(endpoint->fd, pos->buf.data + pos->buf.idx, pos->buf.len, 0, (const struct sockaddr *)&addr, sizeof(addr));
 		if (s == -1) {
 			//send fail
 			if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -191,14 +194,14 @@ static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 				//send error
 			}
 			break;
-		} else if (s < endpoint_send_ctx->buf->len) {
-			endpoint_send_ctx->buf->len -= s;
-			endpoint_send_ctx->buf->idx += s;
+		} else if (s < pos->buf.len) {
+			pos->buf.len -= s;
+			pos->buf.idx += s;
 			//send part out
 			break;
 		} else {
-			endpoint_send_ctx->buf->len = 0;
-			endpoint_send_ctx->buf->idx = 0;
+			pos->buf.len = 0;
+			pos->buf.idx = 0;
 			//send out ok
 		}
 
@@ -397,7 +400,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	printf("endpoint_connect_peer() send to ktun=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
 
 	eb->buf.idx = 0;
-	eb->buf.len = 4 + 4 + 6 + 6;
+	eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
 	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
 	set_byte4(eb->buf.data + 4, htonl(0x00000002));
 	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
@@ -426,7 +429,7 @@ void endpoint_ktun_start(endpoint_t *endpoint)
 	printf("init send to ktun=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
 
 	eb->buf.idx = 0;
-	eb->buf.len = 4 + 4 + 6;
+	eb->buf_len = eb->buf.len = 4 + 4 + 6;
 	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
 	set_byte4(eb->buf.data + 4, htonl(0x00000001));
 	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac

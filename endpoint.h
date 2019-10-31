@@ -86,6 +86,7 @@ typedef struct endpoint_buffer_t {
 	int repeat;
 	__be32 addr;
 	__be16 port;
+	int buf_len;
 	struct buffer_t buf;
 } endpoint_buffer_t;
 

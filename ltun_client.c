@@ -225,6 +225,7 @@ static remote_t *connect_to_remote(EV_P_ unsigned char *remote_id)
 	rkcp = rawkcp_new(conv);
 	if (!rkcp)
 		return NULL;
+	memcpy(rkcp->remote_id, remote_id, 6);
 
 	if (rawkcp_attach_endpoint(EV_A_ rkcp, default_endpoint) != 0) {
 		rawkcp_free(rkcp);
