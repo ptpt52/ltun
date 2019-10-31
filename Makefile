@@ -4,7 +4,7 @@ LIBS += -L. -lev -lm
 CLIENT_BIN = ltun_c
 SERVER_BIN = ltun_s
 
-CFLAGS += -g -Werror -std=gnu99
+CFLAGS += -g -Wall -Werror -std=gnu99
 
 HDRS = ltun.h ikcp.h
 CLIENT_SRCS = ltun_client.c ikcp.c rawkcp.c endpoint.c

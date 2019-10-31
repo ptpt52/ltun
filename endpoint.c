@@ -45,8 +45,9 @@ void default_eb_recycle(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb
 	if (eb->repeat > 0) {
 		eb->repeat--;
 		list_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
+	} else {
+		free(eb);
 	}
-	free(eb);
 }
 
 void endpoint_buffer_recycle(EV_P_ endpoint_t *endpoint, endpoint_buffer_t *eb)
@@ -217,10 +218,8 @@ static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 	endpoint_buffer_t *pos, *n;
 	endpoint_t *endpoint = (endpoint_t *)watcher;
 
-	printf("next=%p prev=%p\n", endpoint->send_ctx->buf_head.next, endpoint->send_ctx->buf_head.prev);
 	list_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
 		list_del(&pos->list);
-		printf("next=%p prev=%p k\n\n", endpoint->send_ctx->buf_head.next, endpoint->send_ctx->buf_head.prev);
 		list_add_tail(&pos->list, &endpoint->send_ctx->buf_head);
 		need_send = 1;
 	}
@@ -370,7 +369,7 @@ endpoint_t *endpoint_new(int fd)
 	ev_io_init(&endpoint->recv_ctx->io, endpoint_recv_cb, endpoint->fd, EV_READ);
 	ev_io_init(&endpoint->send_ctx->io, endpoint_send_cb, endpoint->fd, EV_WRITE);
 
-	ev_timer_init(&endpoint->watcher, endpoint_watcher_send_cb, 1.0, 5.0);
+	ev_timer_init(&endpoint->watcher, endpoint_watcher_send_cb, 1.0, 1.0);
 
 	return endpoint;
 }

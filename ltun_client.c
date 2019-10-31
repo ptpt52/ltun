@@ -45,8 +45,6 @@ static void signal_cb(EV_P_ ev_signal *w, int revents);
 static void accept_cb(EV_P_ ev_io *w, int revents);
 static void server_send_cb(EV_P_ ev_io *w, int revents);
 static void server_recv_cb(EV_P_ ev_io *w, int revents);
-static void remote_recv_cb(EV_P_ ev_io *w, int revents);
-static void remote_send_cb(EV_P_ ev_io *w, int revents);
 static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents);
 
 static remote_t *new_remote(rawkcp_t *rkcp);
@@ -240,18 +238,6 @@ static remote_t *connect_to_remote(EV_P_ unsigned char *remote_id)
 	return remote;
 }
 
-static int getdestaddr(int fd, struct sockaddr_storage *destaddr)
-{
-    socklen_t socklen = sizeof(*destaddr);
-    int error = 0;
-
-	error = getsockopt(fd, SOL_IP, SO_ORIGINAL_DST, destaddr, &socklen);
-	if (error) {
-		return -1;
-	}
-	return 0;
-}
-
 static void server_recv_cb(EV_P_ ev_io *w, int revents)
 {
 	server_ctx_t *server_recv_ctx = (server_ctx_t *)w;
@@ -291,7 +277,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	if (server->stage == STAGE_STREAM) {
 		ev_timer_again(EV_A_ & server->recv_ctx->watcher);
 
-		int s = ikcp_send(remote->rkcp->kcp, remote->buf->data, remote->buf->len);
+		int s = ikcp_send(remote->rkcp->kcp, (const char *)remote->buf->data, remote->buf->len);
 		if (s < 0) {
 			perror("server_recv_send");
 			close_and_free_remote(EV_A_ remote);
@@ -364,151 +350,6 @@ static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 
 	close_and_free_remote(EV_A_ remote);
 	close_and_free_server(EV_A_ server);
-}
-
-static void remote_recv_cb(EV_P_ ev_io *w, int revents)
-{
-	remote_ctx_t *remote_recv_ctx = (remote_ctx_t *)w;
-	remote_t *remote              = remote_recv_ctx->remote;
-	server_t *server              = remote->server;
-
-	if (server == NULL) {
-		printf("invalid server\n");
-		close_and_free_remote(EV_A_ remote);
-		return;
-	}
-
-	ev_timer_again(EV_A_ & server->recv_ctx->watcher);
-
-	ssize_t r = recv(remote->fd, server->buf->data, BUF_SIZE, 0);
-	if (r == 0) {
-		// connection closed
-		if (verbose) {
-			printf("remote_recv close the connection\n");
-		}
-		close_and_free_remote(EV_A_ remote);
-		close_and_free_server(EV_A_ server);
-		return;
-	} else if (r == -1) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-			// no data
-			// continue to wait for recv
-			return;
-		} else {
-			//perror("remote recv");
-			close_and_free_remote(EV_A_ remote);
-			close_and_free_server(EV_A_ server);
-			return;
-		}
-	}
-	rx += r;
-	server->buf->len = r;
-
-	int s = send(server->fd, server->buf->data, server->buf->len, 0);
-	if (s == -1) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-			// no data, wait for send
-			server->buf->idx = 0;
-			ev_io_stop(EV_A_ & remote_recv_ctx->io);
-			ev_io_start(EV_A_ & server->send_ctx->io);
-		} else {
-			perror("remote_recv_send");
-			close_and_free_remote(EV_A_ remote);
-			close_and_free_server(EV_A_ server);
-			return;
-		}
-	} else if (s < server->buf->len) {
-		server->buf->len -= s;
-		server->buf->idx  = s;
-		ev_io_stop(EV_A_ & remote_recv_ctx->io);
-		ev_io_start(EV_A_ & server->send_ctx->io);
-	}
-
-	// Disable TCP_NODELAY after the first response are sent
-	if (!remote->recv_ctx->connected) {
-		int opt = 0;
-		setsockopt(server->fd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
-		setsockopt(remote->fd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
-		remote->recv_ctx->connected = 1;
-	}
-}
-
-static void remote_send_cb(EV_P_ ev_io *w, int revents)
-{
-	remote_ctx_t *remote_send_ctx = (remote_ctx_t *)w;
-	remote_t *remote              = remote_send_ctx->remote;
-	server_t *server              = remote->server;
-
-	if (server == NULL) {
-		printf("invalid server\n");
-		close_and_free_remote(EV_A_ remote);
-		return;
-	}
-
-	if (!remote_send_ctx->connected) {
-		struct sockaddr_storage addr;
-		socklen_t len = sizeof(struct sockaddr_storage);
-		memset(&addr, 0, len);
-		int r = getpeername(remote->fd, (struct sockaddr *)&addr, &len);
-		if (r == 0) {
-			if (verbose) {
-				printf("remote connected\n");
-			}
-			remote_send_ctx->connected = 1;
-			if (server->stage != STAGE_STREAM) {
-				server->stage = STAGE_STREAM;
-				ev_io_start(EV_A_ & remote->recv_ctx->io);
-			}
-
-			if (remote->buf->len == 0) {
-				ev_io_stop(EV_A_ & remote_send_ctx->io);
-				ev_io_start(EV_A_ & server->recv_ctx->io);
-				return;
-			}
-		} else {
-			perror("remote_send_getpeername");
-			// not connected
-			close_and_free_remote(EV_A_ remote);
-			close_and_free_server(EV_A_ server);
-			return;
-		}
-	}
-
-	if (remote->buf->len == 0) {
-		// close and free
-		if (verbose) {
-			printf("remote_send close the connection\n");
-		}
-		close_and_free_remote(EV_A_ remote);
-		close_and_free_server(EV_A_ server);
-		return;
-	} else {
-		// has data to send
-		ssize_t s = send(remote->fd, remote->buf->data + remote->buf->idx, remote->buf->len, 0);
-		if (s == -1) {
-			if (errno != EAGAIN && errno != EWOULDBLOCK) {
-				perror("remote_send_send");
-				// close and free
-				close_and_free_remote(EV_A_ remote);
-				close_and_free_server(EV_A_ server);
-				return;
-			}
-		} else if (s < remote->buf->len) {
-			// partly sent, move memory, wait for the next time to send
-			remote->buf->len -= s;
-			remote->buf->idx += s;
-		} else {
-			// all sent out, wait for reading
-			remote->buf->len = 0;
-			remote->buf->idx = 0;
-			ev_io_stop(EV_A_ & remote_send_ctx->io);
-			ev_io_start(EV_A_ & server->recv_ctx->io);
-		}
-		if (server->stage != STAGE_STREAM) {
-			server->stage = STAGE_STREAM;
-			ev_io_start(EV_A_ & remote->recv_ctx->io);
-		}
-	}
 }
 
 static remote_t *new_remote(rawkcp_t *rkcp)
