@@ -378,6 +378,7 @@ static remote_t *new_remote(rawkcp_t *rkcp)
 	remote->send_ctx->connected = 0;
 	remote->server              = NULL;
 
+	rkcp->remote = remote;
 	//ev_io_init(&remote->recv_ctx->io, remote_recv_cb, fd, EV_READ);
 	//ev_io_init(&remote->send_ctx->io, remote_send_cb, fd, EV_WRITE);
 
@@ -535,6 +536,7 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 			remote->server = server;
 			//ev_io_start(EV_A_ & remote->recv_ctx->io);
 			//ev_io_start(EV_A_ & remote->send_ctx->io);
+			ev_io_start(EV_A_ & server->recv_ctx->io);
 		}
 	}
 }

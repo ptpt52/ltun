@@ -9,47 +9,64 @@
 #include "endpoint.h"
 #include "rawkcp.h"
 
-typedef struct listen_ctx {
+typedef struct listen_ctx_t {
 	ev_io io;
 	int fd;
 	int timeout;
 	struct ev_loop *loop;
 } listen_ctx_t;
 
-typedef struct server_ctx {
+typedef struct server_ctx_t {
 	ev_io io;
 	ev_timer watcher;
 	int connected;
-	struct server *server;
+	struct server_t *server;
 } server_ctx_t;
 
-typedef struct server {
+typedef struct server_t {
 	int fd;
 	int stage;
 
 	buffer_t *buf;
 
-	struct server_ctx *recv_ctx;
-	struct server_ctx *send_ctx;
-	struct listen_ctx *listen_ctx;
-	struct remote *remote;
+	struct server_ctx_t *recv_ctx;
+	struct server_ctx_t *send_ctx;
+	struct listen_ctx_t *listen_ctx;
+	struct remote_t *remote;
 } server_t;
 
-typedef struct remote_ctx {
+typedef struct local_ctx_t {
 	ev_io io;
 	int connected;
-	struct remote *remote;
+	struct local_t *local;
+} local_ctx_t;
+
+typedef struct local_t {
+	int fd;
+	int stage;
+
+	buffer_t *buf;
+
+	struct local_ctx_t *recv_ctx;
+	struct local_ctx_t *send_ctx;
+	struct remote_t *remote;
+} local_t;
+
+typedef struct remote_ctx_t {
+	ev_io io;
+	int connected;
+	struct remote_t *remote;
 } remote_ctx_t;
 
-typedef struct remote {
+typedef struct remote_t {
 	int fd;
 	rawkcp_t *rkcp;
 
 	buffer_t *buf;
 
-	struct remote_ctx *recv_ctx;
-	struct remote_ctx *send_ctx;
-	struct server *server;
+	struct remote_ctx_t *recv_ctx;
+	struct remote_ctx_t *send_ctx;
+	struct server_t *server;
 } remote_t;
 
 #define STAGE_ERROR     -1  /* Error detected                   */

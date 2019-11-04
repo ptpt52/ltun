@@ -32,6 +32,7 @@
 #include "list.h"
 #include "endpoint.h"
 #include "rawkcp.h"
+#include "ltun.h"
 
 #ifndef EAGAIN
 #define EAGAIN EWOULDBLOCK
@@ -212,6 +213,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 							break;
 						}
 						//TODO callback rawkcp
+						if (pos->remote && pos->remote->server) {
+							ev_io_start(EV_A_ & pos->remote->server->recv_ctx->io);
+							printf("callback rawkcp server->recv_ctx->io\n");
+						}
 					}
 				}
 			} else {
