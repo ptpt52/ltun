@@ -1,22 +1,22 @@
 INCS += -I.
 LIBS += -L. -lev -lm
 
-CLIENT_BIN = ltun_c
+LTUN_BIN = ltun
 
 CFLAGS += -g -Wall -Werror -std=gnu99
 
 HDRS = ltun.h ikcp.h
-CLIENT_SRCS = ltun_client.c ikcp.c rawkcp.c endpoint.c
+LTUN_SRCS = ltun.c ikcp.c rawkcp.c endpoint.c
 
 .SUFFIXES: .c .o
 
 .c.o: $(HDRS)
 	$(CC) -c $^ -o $@ $(CFLAGS) $(INCS)
 
-default: $(CLIENT_BIN)
+default: $(LTUN_BIN)
 
-$(CLIENT_BIN): $(CLIENT_SRCS:.c=.o)
+$(LTUN_BIN): $(LTUN_SRCS:.c=.o)
 	$(CC) $^ -o $@ $(CFLAGS) $(LDFLAGS) $(LIBS)
 
 clean:
-	$(RM) $(CLIENT_BIN) $(CLIENT_SRCS:.c=.o)
+	$(RM) $(LTUN_BIN) $(LTUN_SRCS:.c=.o)
