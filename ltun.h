@@ -49,7 +49,7 @@ typedef struct local_t {
 
 	struct local_ctx_t *recv_ctx;
 	struct local_ctx_t *send_ctx;
-	struct remote_t *remote;
+	rawkcp_t *rkcp;
 } local_t;
 
 typedef struct remote_ctx_t {
@@ -60,12 +60,11 @@ typedef struct remote_ctx_t {
 
 typedef struct remote_t {
 	int fd;
-	rawkcp_t *rkcp;
-
 	buffer_t *buf;
 
 	struct remote_ctx_t *recv_ctx;
 	struct remote_ctx_t *send_ctx;
+	rawkcp_t *rkcp;
 	struct server_t *server;
 } remote_t;
 
