@@ -5,7 +5,7 @@ LTUN_BIN = ltun
 
 CFLAGS += -g -Wall -Werror -std=gnu99
 
-HDRS = ltun.h ikcp.h
+HDRS = ltun.h ikcp.h endpoint.h jhash.h list.h rawkcp.h
 LTUN_SRCS = ltun.c ikcp.c rawkcp.c endpoint.c
 
 .SUFFIXES: .c .o
