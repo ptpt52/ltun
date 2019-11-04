@@ -584,12 +584,14 @@ static void parse_optarg_mac(unsigned char *mac, const char *optarg)
 void usage()
 {
 	printf("\n");
-	printf("natcapd %s\n\n", "1.0");
-	printf("  Chen Minqiang <ptpt52@gmail.com>\n\n");
+	printf("ltun %s\n\n", "1.0");
+	printf("  Q2hlbiBNaW5xaWFuZyA8cHRwdDUyQGdtYWlsLmNvbT4=\n\n");
 	printf("  usage:\n\n");
 	printf("       [-s <server_host>]         Local IP address to bind\n");
 	printf("       [-l <local_port>]          Port number of your local server.\n");
 	printf("       [-t <timeout>]             Socket timeout in seconds.\n");
+	printf("       [-k <ktun>]                Ktun server\n");
+	printf("       [-m <mac>]                 Mac address\n");
 	printf("       [-v]                       Verbose mode.\n");
 	printf("       [-h, --help]               Print this message.\n");
 	printf("\n");
@@ -605,7 +607,7 @@ int main(int argc, char **argv)
 
 	int server_num = 0;
 	const char *server_host[MAX_REMOTE_NUM];
-	unsigned char mac[6];
+	unsigned char mac[6] = {0,0,0,0,0,0};
 	char *ktun = NULL;
 
 	opterr = 0;
@@ -653,6 +655,15 @@ int main(int argc, char **argv)
 
 	if (timeout == NULL) {
 		timeout = "60";
+	}
+
+	if (ktun == NULL) {
+		ktun = "ec1ns.ptpt52.com";
+	}
+
+	if (mac[0] == 0 && mac[1] == 0 && mac[2] == 0 && mac[3] == 0 && mac[4] == 0 && mac[5] == 0) {
+		usage();
+		exit(EXIT_FAILURE);
 	}
 
 	// ignore SIGPIPE
