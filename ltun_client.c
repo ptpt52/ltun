@@ -43,6 +43,7 @@
 
 static void signal_cb(EV_P_ ev_signal *w, int revents);
 static void accept_cb(EV_P_ ev_io *w, int revents);
+static void remote_send_handshake(EV_P_ remote_t *remote);
 static void server_send_cb(EV_P_ ev_io *w, int revents);
 static void server_recv_cb(EV_P_ ev_io *w, int revents);
 static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents);
@@ -241,6 +242,16 @@ static remote_t *connect_to_remote(EV_P_ unsigned char *remote_id)
 	return remote;
 }
 
+static void remote_send_handshake(EV_P_ remote_t *remote)
+{
+	remote->buf->len = sprintf((char *)remote->buf->data, "connect 127.0.0.1:80\n");
+	int s = ikcp_send(remote->rkcp->kcp, (const char *)remote->buf->data, remote->buf->len);
+	if (s < 0) {
+		perror("server_recv_send");
+		close_and_free_remote(EV_A_ remote);
+	}
+}
+
 static void server_recv_cb(EV_P_ ev_io *w, int revents)
 {
 	server_ctx_t *server_recv_ctx = (server_ctx_t *)w;
@@ -377,6 +388,7 @@ static remote_t *new_remote(rawkcp_t *rkcp)
 	remote->send_ctx->remote    = remote;
 	remote->send_ctx->connected = 0;
 	remote->server              = NULL;
+	remote->handshake = remote_send_handshake;
 
 	rkcp->remote = remote;
 	//ev_io_init(&remote->recv_ctx->io, remote_recv_cb, fd, EV_READ);
@@ -403,7 +415,7 @@ static void close_and_free_remote(EV_P_ remote_t *remote)
 	if (remote != NULL) {
 		ev_io_stop(EV_A_ & remote->send_ctx->io);
 		ev_io_stop(EV_A_ & remote->recv_ctx->io);
-		close(remote->fd);
+		//TODO free
 		free_remote(remote);
 		if (verbose) {
 			remote_conn--;
@@ -536,7 +548,9 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 			remote->server = server;
 			//ev_io_start(EV_A_ & remote->recv_ctx->io);
 			//ev_io_start(EV_A_ & remote->send_ctx->io);
-			ev_io_start(EV_A_ & server->recv_ctx->io);
+			if (remote->rkcp->peer && remote->handshake) {
+				remote->handshake(EV_A_ remote);
+			}
 		}
 	}
 }

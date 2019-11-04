@@ -32,4 +32,6 @@ extern rawkcp_t *rawkcp_new(unsigned int conv);
 extern void rawkcp_free(rawkcp_t *rkcp);
 extern int rawkcp_insert(rawkcp_t *rkcp);
 
+extern int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user);
+
 #endif /* _RAWKCP_H_ */

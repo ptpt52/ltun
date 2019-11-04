@@ -213,9 +213,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 							break;
 						}
 						//TODO callback rawkcp
-						if (pos->remote && pos->remote->server) {
-							ev_io_start(EV_A_ & pos->remote->server->recv_ctx->io);
-							printf("callback rawkcp server->recv_ctx->io\n");
+						if (pos->remote && pos->remote->handshake) {
+							pos->remote->handshake(EV_A_ pos->remote);
+							printf("callback rawkcp: start remote->handshake\n");
 						}
 					}
 				}

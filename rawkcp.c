@@ -3,6 +3,9 @@
  *  Date : Thu, 10 Oct 2019 14:20:09 +0800
  */
 #include <stdlib.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include "jhash.h"
 #include "list.h"
 #include "rawkcp.h"
@@ -64,6 +67,10 @@ rawkcp_t *rawkcp_new(unsigned int conv)
 	rkcp->remote_addr = 0;
 	rkcp->remote_port = 0;
 
+	rkcp->kcp->output = rawkcp_output;
+	ikcp_wndsize(rkcp->kcp, 128, 128);
+	ikcp_nodelay(rkcp->kcp, 0, 10, 0, 0);
+
 	return rkcp;
 }
 
@@ -113,4 +120,35 @@ rawkcp_t *rawkcp_lookup(unsigned int conv, unsigned int remote_addr, unsigned sh
 	}
 
 	return NULL;
+}
+
+int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
+{
+	rawkcp_t *rkcp = (rawkcp_t *)user;
+
+	if (rkcp->peer == NULL)
+		return -1;
+	if (rkcp->endpoint == NULL)
+		return -1;
+
+	do {
+		struct sockaddr_in addr;
+		ssize_t s;
+
+		memset(&addr, 0, sizeof(addr));
+		addr.sin_family = AF_INET;
+		addr.sin_port = rkcp->peer->port;
+		addr.sin_addr.s_addr = rkcp->peer->addr;
+
+		s = sendto(rkcp->endpoint->fd, buf, len, 0, (const struct sockaddr *)&addr, sizeof(addr));
+
+		if (s == -1) {
+			if (errno != EAGAIN && errno != EWOULDBLOCK) {
+				//TODO connection error
+				return -1;
+			}
+		}
+	} while(0);
+
+	return 0;
 }

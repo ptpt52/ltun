@@ -59,13 +59,13 @@ typedef struct remote_ctx_t {
 } remote_ctx_t;
 
 typedef struct remote_t {
-	int fd;
+	rawkcp_t *rkcp;
 	buffer_t *buf;
 
 	struct remote_ctx_t *recv_ctx;
 	struct remote_ctx_t *send_ctx;
-	rawkcp_t *rkcp;
 	struct server_t *server;
+	void (*handshake)(EV_P_ struct remote_t *remote);
 } remote_t;
 
 #define STAGE_ERROR     -1  /* Error detected                   */
