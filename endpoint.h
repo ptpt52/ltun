@@ -50,6 +50,7 @@ typedef struct endpoint_t {
 
 	int fd;
 	int stage;
+	int ticks;
 	unsigned char id[6];
 
 	__be32 ktun_addr;
@@ -84,6 +85,7 @@ typedef struct endpoint_buffer_t {
 	endpoint_t *endpoint;
 	void (*recycle)(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb);
 	int repeat;
+	int interval;
 	__be32 addr;
 	__be16 port;
 	int buf_len;
@@ -174,5 +176,10 @@ extern peer_t *endpoint_peer_lookup(unsigned char *id);
 extern int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id);
 
 extern void endpoint_ktun_start(endpoint_t *endpoint);
+
+
+extern int endpoint_peer_init(void);
+
+extern int endpoint_peer_insert(peer_t *peer);
 
 #endif /* _ENDPOINT_H_ */

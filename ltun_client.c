@@ -80,12 +80,14 @@ int rawkcp_attach_endpoint(EV_P_ rawkcp_t *rkcp, endpoint_t *endpoint)
 	if (peer != NULL ) {
 		rkcp->remote_addr = peer->addr;
 		rkcp->remote_port = peer->port;
+		rkcp->peer = peer;
+		rkcp->endpoint = endpoint;
 		ret = rawkcp_insert(rkcp);
 		if (ret != 0) {
 			return ret;
 		}
-		rkcp->peer = peer;
-		rkcp->endpoint = endpoint;
+
+		printf("endpoint_peer_lookup found\n");
 	}
 
 	return endpoint_attach_rawkcp(EV_A_ endpoint, rkcp);
@@ -680,6 +682,7 @@ int main(int argc, char **argv)
 	}
 
 	__rawkcp_init();
+	endpoint_peer_init();
 
 	fd = endpoint_create_fd("0.0.0.0", "0");
 	if (fd == -1) {

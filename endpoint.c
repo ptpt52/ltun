@@ -28,7 +28,10 @@
 #include <net/if.h>
 #include <sys/ioctl.h>
 
+#include "jhash.h"
+#include "list.h"
 #include "endpoint.h"
+#include "rawkcp.h"
 
 #ifndef EAGAIN
 #define EAGAIN EWOULDBLOCK
@@ -157,7 +160,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
 				set_byte4(eb->buf.data + 4, htonl(0x00000003));
 				set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
-				set_byte6(eb->buf.data + 4 + 4 + 6, smac); //dmac
+				set_byte6(eb->buf.data + 4 + 4 + 6, dmac); //dmac
 
 				list_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
@@ -165,6 +168,57 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			} while (0);
 
 		} else if(get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000003)) {
+			//got 0x00000003 connection ready.
+			//0x00000003: in-comming connection: smac, dmac
+			unsigned char smac[6], dmac[6];
+
+			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4, smac);
+			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4 + 6, dmac);
+			if (memcmp(endpoint->id, dmac, 6) == 0) {
+				rawkcp_t *pos;
+				struct hlist_node *n;
+				printf("accept in-comming connection from=%02X:%02X:%02X:%02X:%02X:%02X, to=%02X:%02X:%02X:%02X:%02X:%02X\n",
+						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
+						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
+				//
+				hlist_for_each_entry_safe(pos, n, &endpoint->rawkcp_head, hnode) {
+					if (memcmp(pos->remote_id, smac, 6) == 0) {
+						int ret;
+						peer_t *peer;
+
+						hlist_del(&pos->hnode);
+
+						peer = malloc(sizeof(peer_t));
+						INIT_HLIST_NODE(&peer->hnode);
+						peer->stage = PEER_INIT;
+						memcpy(peer->id, pos->remote_id, 6);
+						peer->addr = addr.sin_addr.s_addr;
+						peer->port = addr.sin_port;
+
+						printf("peer(%02X:%02X:%02X:%02X:%02X:%02X) connected @%u.%u.%u.%u:%u\n",
+								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
+								NIPV4_ARG(peer->addr), htons(peer->port));
+
+						ret = endpoint_peer_insert(peer);
+						if (ret != 0) {
+							free(peer);
+							break;
+						}
+						pos->peer = peer;
+						pos->endpoint = endpoint;
+						ret = rawkcp_insert(pos);
+						if (ret != 0) {
+							rawkcp_free(pos);
+							break;
+						}
+						//TODO callback rawkcp
+					}
+				}
+			} else {
+				printf("unknown in-comming connection from=%02X:%02X:%02X:%02X:%02X:%02X, to=%02X:%02X:%02X:%02X:%02X:%02X\n",
+						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
+						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
+			}
 		}
 	}
 }
@@ -223,7 +277,12 @@ static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 	endpoint_buffer_t *pos, *n;
 	endpoint_t *endpoint = (endpoint_t *)watcher;
 
+	endpoint->ticks++;
+
 	list_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
+		if (pos->interval > 0 && (endpoint->ticks % pos->interval) != 0) {
+			continue;
+		}
 		list_del(&pos->list);
 		list_add_tail(&pos->list, &endpoint->send_ctx->buf_head);
 		need_send = 1;
@@ -379,10 +438,85 @@ endpoint_t *endpoint_new(int fd)
 	return endpoint;
 }
 
+
+struct hlist_head *peer_hash = NULL;
+unsigned int peer_hash_size = 1024;
+static unsigned int peer_rnd = 0;
+
+#define PAGE_SIZE 4096
+#define UINT_MAX    (~0U)
+#define __round_mask(x, y) ((__typeof__(x))((y)-1))
+#define round_up(x, y) ((((x)-1) | __round_mask(x, y))+1)
+
+void *peer_alloc_hashtable(unsigned int *sizep)
+{
+	struct hlist_head *hash;
+	unsigned int nr_slots, i;
+
+	if (*sizep > (UINT_MAX / sizeof(struct hlist_head)))
+		return NULL;
+
+	nr_slots = *sizep = round_up(*sizep,  PAGE_SIZE / sizeof(struct hlist_head));
+
+	hash = malloc(sizeof(struct hlist_head) * nr_slots);
+
+	if (hash) {
+		for (i = 0; i < nr_slots; i++)
+			INIT_HLIST_HEAD(&hash[i]);
+	}
+
+	return hash;
+}
+
+int endpoint_peer_init(void)
+{
+	peer_rnd = random();
+	peer_hash = peer_alloc_hashtable(&peer_hash_size);
+
+	if (!peer_hash)
+		return -1;
+
+	return 0;
+}
+
 peer_t *endpoint_peer_lookup(unsigned char *id)
 {
 	//TODO
+	unsigned int hash;
+	peer_t *pos;
+	struct hlist_head *head;
+	
+	hash = jhash_2words(*(unsigned int *)&id[0], *(unsigned short *)&id[4], peer_rnd) % peer_hash_size;
+	head = &peer_hash[hash];
+
+	hlist_for_each_entry(pos, head, hnode) {
+		if (memcmp(pos->id, id, 6) == 0) {
+			return pos;
+		}
+	}
+
 	return NULL;
+}
+
+int endpoint_peer_insert(peer_t *peer)
+{
+	unsigned int hash;
+	peer_t *pos;
+	struct hlist_head *head;
+	
+	hash = jhash_2words(*(unsigned int *)&peer->id[0], *(unsigned short *)&peer->id[4], peer_rnd) % peer_hash_size;
+	head = &peer_hash[hash];
+
+	hlist_for_each_entry(pos, head, hnode) {
+		if (memcmp(pos->id, peer->id, 6) == 0) {
+			//found
+			return -1;
+		}
+	}
+
+	hlist_add_head(&peer->hnode, head);
+
+	return 0;
 }
 
 int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
@@ -423,6 +557,7 @@ void endpoint_ktun_start(endpoint_t *endpoint)
 
 	eb->endpoint = endpoint;
 	eb->repeat = -1;
+	eb->interval = 10;
 	eb->addr = endpoint->ktun_addr;
 	eb->port = endpoint->ktun_port;
 
