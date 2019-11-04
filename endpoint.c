@@ -225,6 +225,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
 			}
 		}
+	//end KTUN_P_MAGIC
+	} else {
+		printf("endpoint: recv msg: code=0x%08x from=%u.%u.%u.%u:%u\n", ntohl(get_byte4(endpoint_recv_ctx->buf->data + 4)), NIPV4_ARG(addr.sin_addr.s_addr), htons(addr.sin_port));
 	}
 }
 

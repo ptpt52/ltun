@@ -12,6 +12,8 @@
 #include "endpoint.h"
 
 typedef struct rawkcp_t {
+	ev_timer watcher;
+
 	struct hlist_node hnode;
 
 	ikcpcb *kcp;

@@ -6,9 +6,34 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/time.h>
+#include <stdio.h>
 #include "jhash.h"
 #include "list.h"
 #include "rawkcp.h"
+
+void itimeofday(long *sec, long *usec)
+{
+	struct timeval time;
+	gettimeofday(&time, NULL);
+	if (sec) *sec = time.tv_sec;
+	if (usec) *usec = time.tv_usec;
+}
+
+/* get clock in millisecond 64 */
+IINT64 iclock64(void)
+{
+	long s, u;
+	IINT64 value;
+	itimeofday(&s, &u);
+	value = ((IINT64)s) * 1000 + (u / 1000);
+	return value;
+}
+
+IUINT32 iclock()
+{
+	return (IUINT32)(iclock64() & 0xfffffffful);
+}
 
 struct hlist_head *rawkcp_hash = NULL;
 unsigned int rawkcp_hash_size = 1024;
@@ -50,6 +75,17 @@ int __rawkcp_init(void)
 	return 0;
 }
 
+static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
+{
+	rawkcp_t *rkcp = (rawkcp_t *)watcher;
+
+	if (rkcp->kcp) {
+		ikcp_update(rkcp->kcp, iclock());
+	}
+
+	ev_timer_again(EV_A_ & rkcp->watcher);
+}
+
 rawkcp_t *rawkcp_new(unsigned int conv)
 {
 	rawkcp_t *rkcp = malloc(sizeof(rawkcp_t));
@@ -70,6 +106,8 @@ rawkcp_t *rawkcp_new(unsigned int conv)
 	rkcp->kcp->output = rawkcp_output;
 	ikcp_wndsize(rkcp->kcp, 128, 128);
 	ikcp_nodelay(rkcp->kcp, 0, 10, 0, 0);
+
+	ev_timer_init(&rkcp->watcher, rawkcp_watcher_cb, 0.1, 0.1);
 
 	return rkcp;
 }
@@ -125,6 +163,8 @@ rawkcp_t *rawkcp_lookup(unsigned int conv, unsigned int remote_addr, unsigned sh
 int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	rawkcp_t *rkcp = (rawkcp_t *)user;
+
+	printf("rawkcp_output() \n");
 
 	if (rkcp->peer == NULL)
 		return -1;

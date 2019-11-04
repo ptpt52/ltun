@@ -250,6 +250,8 @@ static void remote_send_handshake(EV_P_ remote_t *remote)
 		perror("server_recv_send");
 		close_and_free_remote(EV_A_ remote);
 	}
+
+	ev_timer_start(EV_A_ & remote->rkcp->watcher);
 }
 
 static void server_recv_cb(EV_P_ ev_io *w, int revents)
