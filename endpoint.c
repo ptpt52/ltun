@@ -108,7 +108,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			printf("listen ok: smac=%02X:%02X:%02X:%02X:%02X:%02X ip=%u.%u.%u.%u port=%u\n",
 					smac[0], smac[1], smac[2], smac[3], smac[4], smac[5], NIPV4_ARG(ip), ntohs(port));
 
-		} else if(get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10020002)) {
+		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10020002)) {
 			//0x10020002: resp=1, ret=002, code=0002 connect ready but not found: smac, dmac, sip, sport, 0, 0
 			unsigned char smac[6], dmac[6];
 			__be32 sip;
@@ -124,7 +124,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
 					NIPV4_ARG(sip), ntohs(sport));
 
-		} else if(get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10030002)) {
+		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10030002)) {
 			//0x10030002: resp=1, ret=003, code=0002 connect ready and found:     smac, dmac, sip, sport, dip, dport
 			unsigned char smac[6], dmac[6];
 			__be32 sip, dip;
@@ -168,43 +168,49 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				ev_io_start(EV_A_ & endpoint->send_ctx->io);
 			} while (0);
 
-		} else if(get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000003)) {
+		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000003) ||
+				get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10000003)) {
 			//got 0x00000003 connection ready.
+			//or got 0x10000003 connection reply
 			//0x00000003: in-comming connection: smac, dmac
 			unsigned char smac[6], dmac[6];
 
 			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4, smac);
 			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4 + 6, dmac);
 			if (memcmp(endpoint->id, dmac, 6) == 0) {
+				int ret;
 				rawkcp_t *pos;
 				struct hlist_node *n;
+				peer_t *peer = NULL;
+
 				printf("accept in-comming connection from=%02X:%02X:%02X:%02X:%02X:%02X, to=%02X:%02X:%02X:%02X:%02X:%02X\n",
 						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
 						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
-				//
+
+				peer = endpoint_peer_lookup(smac);
+
 				hlist_for_each_entry_safe(pos, n, &endpoint->rawkcp_head, hnode) {
 					if (memcmp(pos->remote_id, smac, 6) == 0) {
-						int ret;
-						peer_t *peer;
-
 						hlist_del(&pos->hnode);
 
-						peer = malloc(sizeof(peer_t));
-						INIT_HLIST_NODE(&peer->hnode);
-						peer->stage = PEER_INIT;
-						memcpy(peer->id, pos->remote_id, 6);
-						peer->addr = addr.sin_addr.s_addr;
-						peer->port = addr.sin_port;
+						if (peer == NULL) {
+							peer = malloc(sizeof(peer_t));
+							INIT_HLIST_NODE(&peer->hnode);
+							peer->stage = PEER_INIT;
+							memcpy(peer->id, pos->remote_id, 6);
+							peer->addr = addr.sin_addr.s_addr;
+							peer->port = addr.sin_port;
 
-						printf("peer(%02X:%02X:%02X:%02X:%02X:%02X) connected @%u.%u.%u.%u:%u\n",
-								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
-								NIPV4_ARG(peer->addr), htons(peer->port));
-
-						ret = endpoint_peer_insert(peer);
-						if (ret != 0) {
-							free(peer);
-							break;
+							printf("peer(%02X:%02X:%02X:%02X:%02X:%02X) connected @%u.%u.%u.%u:%u\n",
+									peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
+									NIPV4_ARG(peer->addr), htons(peer->port));
+							ret = endpoint_peer_insert(peer);
+							if (ret != 0) {
+								free(peer);
+								break;
+							}
 						}
+
 						pos->peer = peer;
 						pos->endpoint = endpoint;
 						ret = rawkcp_insert(pos);
@@ -219,11 +225,60 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						}
 					}
 				}
+
+				if (peer == NULL) {
+					printf("no peer found\n");
+					//TODO
+					peer = malloc(sizeof(peer_t));
+					INIT_HLIST_NODE(&peer->hnode);
+					peer->stage = PEER_INIT;
+					memcpy(peer->id, pos->remote_id, 6);
+					peer->addr = addr.sin_addr.s_addr;
+					peer->port = addr.sin_port;
+
+					printf("in-come peer(%02X:%02X:%02X:%02X:%02X:%02X) connected @%u.%u.%u.%u:%u\n",
+							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
+							NIPV4_ARG(peer->addr), htons(peer->port));
+					ret = endpoint_peer_insert(peer);
+					if (ret != 0) {
+						free(peer);
+						return;
+					}
+				}
+
+				//reply to smac
+				if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000003)) {
+					endpoint_buffer_t *eb;
+
+					eb = malloc(sizeof(endpoint_buffer_t));
+					memset(eb, 0, sizeof(endpoint_buffer_t));
+
+					eb->addr = addr.sin_addr.s_addr;
+					eb->port = addr.sin_port;
+
+					printf("reply connection to peer=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
+
+					eb->buf.idx = 0;
+					eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
+					set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
+					set_byte4(eb->buf.data + 4, htonl(0x10000003));
+					set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
+					set_byte6(eb->buf.data + 4 + 4 + 6, smac); //dmac
+
+					list_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
+
+					ev_io_start(EV_A_ & endpoint->send_ctx->io);
+				}
 			} else {
+				//TODO
 				printf("unknown in-comming connection from=%02X:%02X:%02X:%02X:%02X:%02X, to=%02X:%02X:%02X:%02X:%02X:%02X\n",
 						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
 						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
 			}
+		} else {
+			//unknown KTUN code
+			printf("unknown KTUN code=0x%08x\n", get_byte4(endpoint_recv_ctx->buf->data + 4));
+			//TODO
 		}
 	//end KTUN_P_MAGIC
 	} else {
