@@ -709,6 +709,7 @@ int main(int argc, char **argv)
 
 	__rawkcp_init();
 	endpoint_peer_init();
+	endpoint_peer_pipe_init();
 
 	fd = endpoint_create_fd("0.0.0.0", "0");
 	if (fd == -1) {

@@ -216,6 +216,11 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					pipe->addr = addr.sin_addr.s_addr;
 					pipe->port = addr.sin_port;
 					pipe->peer = peer;
+					ret = peer_attach_pipe(peer, pipe);
+					if (ret != 0) {
+						free(pipe);
+						return;
+					}
 
 					printf("in-come peer(%02X:%02X:%02X:%02X:%02X:%02X) connected from new pipe@%u.%u.%u.%u:%u\n",
 							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
@@ -651,19 +656,101 @@ void endpoint_ktun_start(endpoint_t *endpoint)
 	list_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
 }
 
+
+
+struct hlist_head *peer_pipe_hash = NULL;
+unsigned int peer_pipe_hash_size = 1024;
+static unsigned int peer_pipe_rnd = 0;
+
+#define PAGE_SIZE 4096
+#define UINT_MAX    (~0U)
+#define __round_mask(x, y) ((__typeof__(x))((y)-1))
+#define round_up(x, y) ((((x)-1) | __round_mask(x, y))+1)
+
+void *peer_pipe_alloc_hashtable(unsigned int *sizep)
+{
+	struct hlist_head *hash;
+	unsigned int nr_slots, i;
+
+	if (*sizep > (UINT_MAX / sizeof(struct hlist_head)))
+		return NULL;
+
+	nr_slots = *sizep = round_up(*sizep,  PAGE_SIZE / sizeof(struct hlist_head));
+
+	hash = malloc(sizeof(struct hlist_head) * nr_slots);
+
+	if (hash) {
+		for (i = 0; i < nr_slots; i++)
+			INIT_HLIST_HEAD(&hash[i]);
+	}
+
+	return hash;
+}
+
+int endpoint_peer_pipe_init(void)
+{
+	peer_pipe_rnd = random();
+	peer_pipe_hash = peer_pipe_alloc_hashtable(&peer_pipe_hash_size);
+
+	if (!peer_pipe_hash)
+		return -1;
+
+	return 0;
+}
+
 pipe_t *endpoint_peer_pipe_select(peer_t *peer)
 {
 	//TODO
-	return NULL;
+	return peer->pipe[0];
+}
+
+int peer_attach_pipe(peer_t *peer, pipe_t *pipe)
+{
+	if (peer->pipe_count + 1 < PEER_MAX_PIPE) {
+		peer->pipe_count++;
+		peer->pipe[peer->pipe_count] = pipe;
+		return 0;
+	}
+
+	return -1;
 }
 
 pipe_t *endpoint_peer_pipe_lookup(__be32 addr, __be16 port)
 {
 	//TODO
+	unsigned int hash;
+	pipe_t *pos;
+	struct hlist_head *head;
+	
+	hash = jhash_2words(addr, port, peer_rnd) % peer_pipe_hash_size;
+	head = &peer_pipe_hash[hash];
+
+	hlist_for_each_entry(pos, head, hnode) {
+		if (pos->addr == addr && pos->port == port) {
+			return pos;
+		}
+	}
+
 	return NULL;
 }
 
 int endpoint_peer_pipe_insert(pipe_t *pipe)
 {
+	unsigned int hash;
+	pipe_t *pos;
+	struct hlist_head *head;
+	
+	hash = jhash_2words(pipe->addr, pipe->port, peer_pipe_rnd) % peer_pipe_hash_size;
+	head = &peer_pipe_hash[hash];
+
+	hlist_for_each_entry(pos, head, hnode) {
+		if (pos->addr == pipe->addr && pos->port == pipe->port) {
+			//found
+			return -1;
+		}
+	}
+
+	hlist_add_head(&pipe->hnode, head);
+
 	return 0;
 }
