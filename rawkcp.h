@@ -36,4 +36,6 @@ extern int rawkcp_insert(rawkcp_t *rkcp);
 
 extern int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user);
 
+extern rawkcp_t *rawkcp_lookup(unsigned int conv, unsigned int remote_addr, unsigned short remote_port);
+
 #endif /* _RAWKCP_H_ */

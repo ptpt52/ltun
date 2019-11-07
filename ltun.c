@@ -204,14 +204,14 @@ static unsigned int rawkcp_conv_alloc(int type)
 	if (type != 0) {
 		conv = conv_high;
 		conv_high = (conv_high + 1) % 0x80000000 + 0x80000000;
-		if (conv_high == 0x80000000)
+		if (conv_high == 0x80000000 || conv_high == KTUN_P_MAGIC)
 			conv_high++;
 		return conv;
 	}
 
 	conv = conv_low;
 	conv_low = (conv_low + 1) % 0x80000000;
-	if (conv_low == 0)
+	if (conv_low == 0 || conv_high == KTUN_P_MAGIC)
 		conv_low++;
 	return conv;
 }

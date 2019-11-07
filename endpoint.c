@@ -282,7 +282,21 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 		}
 	//end KTUN_P_MAGIC
 	} else {
-		printf("endpoint: recv msg: code=0x%08x from=%u.%u.%u.%u:%u\n", ntohl(get_byte4(endpoint_recv_ctx->buf->data + 4)), NIPV4_ARG(addr.sin_addr.s_addr), htons(addr.sin_port));
+		int conv;
+		rawkcp_t *rkcp;
+
+		conv = ikcp_getconv(endpoint_recv_ctx->buf->data);
+		rkcp = rawkcp_lookup(conv, addr.sin_addr.s_addr, addr.sin_port);
+		//TODO create rkcp
+
+		if (rkcp) {
+			int ret = ikcp_input(rkcp->kcp, (const char *)endpoint_recv_ctx->buf->data, endpoint_recv_ctx->buf->len);
+			if (ret < 0) {
+				printf("conv [%d] ikcp_input failed [%d]\n", conv, ret);
+			}
+		}
+
+		printf("endpoint: recv msg: conv=%u from=%u.%u.%u.%u:%u\n", conv, NIPV4_ARG(addr.sin_addr.s_addr), htons(addr.sin_port));
 	}
 }
 
