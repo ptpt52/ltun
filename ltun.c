@@ -214,6 +214,47 @@ static unsigned int rawkcp_conv_alloc(int type)
 	return conv;
 }
 
+static void close_and_free_local(EV_P_ local_t *local)
+{
+}
+
+static local_t *new_local(int fd)
+{
+	//TODO
+	return NULL;
+}
+
+local_t *connect_to_local(EV_P_ struct addrinfo *res)
+{
+	int sockfd;
+
+	sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+	if (sockfd == -1) {
+		perror("socket");
+		return NULL;
+	}
+
+	int opt = 1;
+	setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
+#ifdef SO_NOSIGPIPE
+	setsockopt(sockfd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
+#endif
+	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+	if (setnonblocking(sockfd) == -1)
+		perror("setnonblocking");
+
+	local_t *local = new_local(sockfd);
+	int r = connect(sockfd, res->ai_addr, res->ai_addrlen);
+	if (r == -1 && errno != EINPROGRESS) {
+		perror("connect");
+		close_and_free_local(EV_A_ local);
+		return NULL;
+	}
+
+	return local;
+}
+
 static remote_t *connect_to_remote(EV_P_ unsigned char *remote_id)
 {
 	unsigned int conv;
@@ -241,7 +282,11 @@ static remote_t *connect_to_remote(EV_P_ unsigned char *remote_id)
 
 static void remote_send_handshake(EV_P_ remote_t *remote)
 {
-	remote->buf->len = sprintf((char *)remote->buf->data, "connect 127.0.0.1:80\n");
+	remote->buf->len = 4 + 4 + 2;
+	set_byte4(remote->buf->data, htonl(KTUN_P_MAGIC));
+	set_byte4(remote->buf->data + 4, htonl((192<<24)|(168<<16)|(16<<8)|(1<<0)));
+	set_byte2(remote->buf->data + 4 + 4, htons(80));
+	//remote->buf->len = sprintf((char *)remote->buf->data, "connect 127.0.0.1:80\n");
 	int s = ikcp_send(remote->rkcp->kcp, (const char *)remote->buf->data, remote->buf->len);
 	if (s < 0) {
 		perror("server_recv_send");
@@ -253,8 +298,8 @@ static void remote_send_handshake(EV_P_ remote_t *remote)
 
 static void server_recv_cb(EV_P_ ev_io *w, int revents)
 {
-	server_ctx_t *server_recv_ctx = (server_ctx_t *)w;
-	server_t *server              = server_recv_ctx->server;
+	server_t *server = (server_t *)w;
+	server_ctx_t *server_recv_ctx = server->recv_ctx;
 	remote_t *remote              = server->remote;
 
 	if (remote == NULL) {
@@ -288,7 +333,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	remote->buf->len = r;
 
 	if (server->stage == STAGE_STREAM) {
-		ev_timer_again(EV_A_ & server->recv_ctx->watcher);
+		ev_timer_again(EV_A_ & server->watcher);
 
 		int s = ikcp_send(remote->rkcp->kcp, (const char *)remote->buf->data, remote->buf->len);
 		if (s < 0) {
@@ -353,8 +398,7 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 
 static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 {
-	server_ctx_t *server_ctx = container_of(watcher, server_ctx_t, watcher);
-	server_t *server = server_ctx->server;
+	server_t *server = container_of(watcher, server_t, watcher);
 	remote_t *remote = server->remote;
 
 	if (verbose) {
@@ -455,8 +499,7 @@ static server_t *new_server(int fd, listen_ctx_t *listener)
 
 	ev_io_init(&server->recv_ctx->io, server_recv_cb, fd, EV_READ);
 	ev_io_init(&server->send_ctx->io, server_send_cb, fd, EV_WRITE);
-	ev_timer_init(&server->recv_ctx->watcher, server_timeout_cb,
-	              request_timeout, listener->timeout);
+	ev_timer_init(&server->watcher, server_timeout_cb, request_timeout, listener->timeout);
 
 	return server;
 }
@@ -480,7 +523,7 @@ static void close_and_free_server(EV_P_ server_t *server)
 	if (server != NULL) {
 		ev_io_stop(EV_A_ & server->send_ctx->io);
 		ev_io_stop(EV_A_ & server->recv_ctx->io);
-		ev_timer_stop(EV_A_ & server->recv_ctx->watcher);
+		ev_timer_stop(EV_A_ & server->watcher);
 		close(server->fd);
 		free_server(server);
 		if (verbose) {
@@ -528,7 +571,7 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 
 	server_t *server = new_server(serverfd, listener);
 	//ev_io_start(EV_A_ & server->recv_ctx->io);
-	ev_timer_start(EV_A_ & server->recv_ctx->watcher);
+	ev_timer_start(EV_A_ & server->watcher);
 
 	if (server->stage == STAGE_INIT) {
 		unsigned char remote_id[6];

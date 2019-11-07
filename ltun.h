@@ -18,12 +18,12 @@ typedef struct listen_ctx_t {
 
 typedef struct server_ctx_t {
 	ev_io io;
-	ev_timer watcher;
 	int connected;
 	struct server_t *server;
 } server_ctx_t;
 
 typedef struct server_t {
+	ev_timer watcher;
 	int fd;
 	int stage;
 
@@ -102,5 +102,7 @@ static inline int setnonblocking(int fd)
 	}
 	return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
+
+local_t *connect_to_local(EV_P_ struct addrinfo *res);
 
 #endif // _LTUN_H

@@ -326,21 +326,49 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 		//new rkcp
 		do {
+			struct sockaddr_in *paddr;
+			struct addrinfo info;
+			struct sockaddr_storage storage;
+
+			memset(&info, 0, sizeof(struct addrinfo));
+			memset(&storage, 0, sizeof(struct sockaddr_storage));
+
+			paddr = (struct sockaddr_in *)&storage;
+			info.ai_family   = AF_INET;
+			info.ai_socktype = SOCK_STREAM;
+			info.ai_protocol = IPPROTO_TCP;
+			info.ai_addrlen  = sizeof(struct sockaddr_in);
+			info.ai_addr     = (struct sockaddr *)&storage;
+
 			if (rkcp->buf == NULL) {
 				rkcp->buf = malloc(sizeof(buffer_t));
 				rkcp->buf->idx = 0;
 				rkcp->buf->len = 0;
 			}
+			if (rkcp->buf->len >= BUF_SIZE) {
+				return;
+			}
 
-			int len = ikcp_recv(rkcp->kcp, (char *)rkcp->buf->data, BUF_SIZE - rkcp->buf->len);
+			int len = ikcp_recv(rkcp->kcp, (char *)rkcp->buf->data + rkcp->buf->len, BUF_SIZE - rkcp->buf->len);
 			if (len < 0) {
 				return;
 			}
 			rkcp->buf->len += len;
 
-			//TODO
-			//decode and make new conncection to ...
+			if (rkcp->buf->len >= 4 + 4 + 2 && get_byte4(rkcp->buf->data) == htonl(KTUN_P_MAGIC)) {
+				paddr->sin_family = AF_INET;
+				paddr->sin_addr.s_addr = get_byte4(rkcp->buf->data + 4);
+				paddr->sin_port = get_byte2(rkcp->buf->data + 4 + 4);
+				local_t *local = connect_to_local(EV_A_ & info);
+				if (local == NULL) {
+					printf("connect error\n");
+					return;
+				}
+				rkcp->local = local;
+				local->rkcp = rkcp;
 
+				//TODO send ack
+			}
 		} while(0);
 	}
 }
