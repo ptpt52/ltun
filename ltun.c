@@ -79,8 +79,6 @@ int rawkcp_attach_endpoint(EV_P_ rawkcp_t *rkcp, endpoint_t *endpoint)
 	peer = endpoint_peer_lookup(rkcp->remote_id);
 
 	if (peer != NULL ) {
-		rkcp->remote_addr = peer->addr;
-		rkcp->remote_port = peer->port;
 		rkcp->peer = peer;
 		rkcp->endpoint = endpoint;
 		ret = rawkcp_insert(rkcp);
@@ -225,10 +223,9 @@ static remote_t *connect_to_remote(EV_P_ unsigned char *remote_id)
 	conv_type = id_is_gt(default_endpoint->id, remote_id);
 	conv = rawkcp_conv_alloc(conv_type);
 
-	rkcp = rawkcp_new(conv);
+	rkcp = rawkcp_new(conv, remote_id);
 	if (!rkcp)
 		return NULL;
-	memcpy(rkcp->remote_id, remote_id, 6);
 
 	if (rawkcp_attach_endpoint(EV_A_ rkcp, default_endpoint) != 0) {
 		rawkcp_free(rkcp);

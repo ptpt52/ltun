@@ -76,9 +76,17 @@ typedef struct peer_t {
 #define PEER_CLOSE -1
 	int stage;
 	unsigned char id[6];
+#define PEER_MAX_PIPE 32
+	int pipe_count;
+	struct pipe_t *pipe[PEER_MAX_PIPE];
+} peer_t;
+
+typedef struct pipe_t {
+	struct hlist_node hnode;
 	__be32 addr;
 	__be16 port;
-} peer_t;
+	struct peer_t *peer;
+} pipe_t;
 
 typedef struct endpoint_buffer_t {
 	struct list_head list;
@@ -181,5 +189,9 @@ extern void endpoint_ktun_start(endpoint_t *endpoint);
 extern int endpoint_peer_init(void);
 
 extern int endpoint_peer_insert(peer_t *peer);
+
+extern pipe_t *endpoint_peer_pipe_select(peer_t *peer);
+extern pipe_t *endpoint_peer_pipe_lookup(__be32 addr, __be16 port);
+extern int endpoint_peer_pipe_insert(pipe_t *pipe);
 
 #endif /* _ENDPOINT_H_ */

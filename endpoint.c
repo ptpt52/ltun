@@ -182,35 +182,54 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				rawkcp_t *pos;
 				struct hlist_node *n;
 				peer_t *peer = NULL;
+				pipe_t *pipe = NULL;
 
 				printf("accept in-comming connection from=%02X:%02X:%02X:%02X:%02X:%02X, to=%02X:%02X:%02X:%02X:%02X:%02X\n",
 						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
 						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
 
 				peer = endpoint_peer_lookup(smac);
+				if (peer == NULL) {
+					printf("no peer found\n");
+					//TODO
+					peer = malloc(sizeof(peer_t));
+					memset(peer, 0, sizeof(peer_t));
+					INIT_HLIST_NODE(&peer->hnode);
+					peer->stage = PEER_INIT;
+					memcpy(peer->id, smac, 6);
+
+					printf("in-come new peer(%02X:%02X:%02X:%02X:%02X:%02X) connected from @%u.%u.%u.%u:%u\n",
+							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
+							NIPV4_ARG(addr.sin_addr.s_addr), htons(addr.sin_port));
+					ret = endpoint_peer_insert(peer);
+					if (ret != 0) {
+						free(peer);
+						return;
+					}
+				}
+
+				pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
+				if (pipe == NULL) {
+					pipe = malloc(sizeof(pipe_t));
+					memset(pipe, 0, sizeof(pipe_t));
+					INIT_HLIST_NODE(&pipe->hnode);
+					pipe->addr = addr.sin_addr.s_addr;
+					pipe->port = addr.sin_port;
+					pipe->peer = peer;
+
+					printf("in-come peer(%02X:%02X:%02X:%02X:%02X:%02X) connected from new pipe@%u.%u.%u.%u:%u\n",
+							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
+							NIPV4_ARG(pipe->addr), htons(pipe->port));
+					ret = endpoint_peer_pipe_insert(pipe);
+					if (ret != 0) {
+						free(pipe);
+						return;
+					}
+				}
 
 				hlist_for_each_entry_safe(pos, n, &endpoint->rawkcp_head, hnode) {
 					if (memcmp(pos->remote_id, smac, 6) == 0) {
 						hlist_del(&pos->hnode);
-
-						if (peer == NULL) {
-							peer = malloc(sizeof(peer_t));
-							INIT_HLIST_NODE(&peer->hnode);
-							peer->stage = PEER_INIT;
-							memcpy(peer->id, pos->remote_id, 6);
-							peer->addr = addr.sin_addr.s_addr;
-							peer->port = addr.sin_port;
-
-							printf("peer(%02X:%02X:%02X:%02X:%02X:%02X) connected @%u.%u.%u.%u:%u\n",
-									peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
-									NIPV4_ARG(peer->addr), htons(peer->port));
-							ret = endpoint_peer_insert(peer);
-							if (ret != 0) {
-								free(peer);
-								break;
-							}
-						}
-
 						pos->peer = peer;
 						pos->endpoint = endpoint;
 						ret = rawkcp_insert(pos);
@@ -223,26 +242,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 							pos->remote->handshake(EV_A_ pos->remote);
 							printf("callback rawkcp: start remote->handshake\n");
 						}
-					}
-				}
-
-				if (peer == NULL) {
-					printf("no peer found\n");
-					//TODO
-					peer = malloc(sizeof(peer_t));
-					INIT_HLIST_NODE(&peer->hnode);
-					peer->stage = PEER_INIT;
-					memcpy(peer->id, pos->remote_id, 6);
-					peer->addr = addr.sin_addr.s_addr;
-					peer->port = addr.sin_port;
-
-					printf("in-come peer(%02X:%02X:%02X:%02X:%02X:%02X) connected @%u.%u.%u.%u:%u\n",
-							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
-							NIPV4_ARG(peer->addr), htons(peer->port));
-					ret = endpoint_peer_insert(peer);
-					if (ret != 0) {
-						free(peer);
-						return;
 					}
 				}
 
@@ -284,9 +283,11 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 	} else {
 		int conv;
 		rawkcp_t *rkcp;
+		pipe_t *pipe;
 
 		conv = ikcp_getconv(endpoint_recv_ctx->buf->data);
-		rkcp = rawkcp_lookup(conv, addr.sin_addr.s_addr, addr.sin_port);
+		pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
+		rkcp = rawkcp_lookup(conv, pipe->peer->id);
 		//TODO create rkcp
 
 		if (rkcp) {
@@ -648,4 +649,21 @@ void endpoint_ktun_start(endpoint_t *endpoint)
 
 	eb->recycle = default_eb_recycle;
 	list_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
+}
+
+pipe_t *endpoint_peer_pipe_select(peer_t *peer)
+{
+	//TODO
+	return NULL;
+}
+
+pipe_t *endpoint_peer_pipe_lookup(__be32 addr, __be16 port)
+{
+	//TODO
+	return NULL;
+}
+
+int endpoint_peer_pipe_insert(pipe_t *pipe)
+{
+	return 0;
 }

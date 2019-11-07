@@ -86,7 +86,7 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 	ev_timer_again(EV_A_ & rkcp->watcher);
 }
 
-rawkcp_t *rawkcp_new(unsigned int conv)
+rawkcp_t *rawkcp_new(unsigned int conv, const unsigned char *remote_id)
 {
 	rawkcp_t *rkcp = malloc(sizeof(rawkcp_t));
 	if (!rkcp)
@@ -100,8 +100,7 @@ rawkcp_t *rawkcp_new(unsigned int conv)
 		free(rkcp);
 		return NULL;
 	}
-	rkcp->remote_addr = 0;
-	rkcp->remote_port = 0;
+	memcpy(rkcp->remote_id, remote_id, 6);
 
 	rkcp->kcp->output = rawkcp_output;
 	ikcp_wndsize(rkcp->kcp, 128, 128);
@@ -127,11 +126,11 @@ int rawkcp_insert(rawkcp_t *rkcp)
 	rawkcp_t *pos;
 	struct hlist_head *head;
 	
-	hash = jhash_3words(rkcp->conv, rkcp->remote_addr, rkcp->remote_port, rawkcp_rnd) % rawkcp_hash_size;
+	hash = jhash_3words(rkcp->conv, get_byte4(&rkcp->remote_id[0]), get_byte2(&rkcp->remote_id[4]), rawkcp_rnd) % rawkcp_hash_size;
 	head = &rawkcp_hash[hash];
 
 	hlist_for_each_entry(pos, head, hnode) {
-		if (pos->conv == rkcp->conv && pos->remote_addr == rkcp->remote_addr && pos->remote_port == rkcp->remote_port) {
+		if (pos->conv == rkcp->conv && memcmp(pos->remote_id, rkcp->remote_id, 6) == 0) {
 			//found
 			return -1;
 		}
@@ -142,17 +141,17 @@ int rawkcp_insert(rawkcp_t *rkcp)
 	return 0;
 }
 
-rawkcp_t *rawkcp_lookup(unsigned int conv, unsigned int remote_addr, unsigned short remote_port)
+rawkcp_t *rawkcp_lookup(unsigned int conv, const unsigned char *remote_id)
 {
 	unsigned int hash;
 	rawkcp_t *pos;
 	struct hlist_head *head;
 	
-	hash = jhash_3words(conv, remote_addr, remote_port, rawkcp_rnd) % rawkcp_hash_size;
+	hash = jhash_3words(conv, get_byte4(&remote_id[0]), get_byte2(&remote_id[4]), rawkcp_rnd) % rawkcp_hash_size;
 	head = &rawkcp_hash[hash];
 
 	hlist_for_each_entry(pos, head, hnode) {
-		if (pos->conv == conv && pos->remote_addr == remote_addr && pos->remote_port == remote_port) {
+		if (pos->conv == conv && memcmp(pos->remote_id, remote_id, 6) == 0) {
 			return pos;
 		}
 	}
@@ -163,6 +162,7 @@ rawkcp_t *rawkcp_lookup(unsigned int conv, unsigned int remote_addr, unsigned sh
 int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	rawkcp_t *rkcp = (rawkcp_t *)user;
+	pipe_t *pipe;
 
 	printf("rawkcp_output() \n");
 
@@ -171,14 +171,23 @@ int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 	if (rkcp->endpoint == NULL)
 		return -1;
 
+	pipe = endpoint_peer_pipe_select(rkcp->peer);
+	if (pipe == NULL) {
+		printf("no pipe available\n");
+		return -1;
+	}
+
+	//TODO
+	//return pipe->output();
+
 	do {
 		struct sockaddr_in addr;
 		ssize_t s;
 
 		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
-		addr.sin_port = rkcp->peer->port;
-		addr.sin_addr.s_addr = rkcp->peer->addr;
+		addr.sin_port = pipe->port;
+		addr.sin_addr.s_addr = pipe->addr;
 
 		s = sendto(rkcp->endpoint->fd, buf, len, 0, (const struct sockaddr *)&addr, sizeof(addr));
 

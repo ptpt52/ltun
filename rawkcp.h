@@ -18,9 +18,6 @@ typedef struct rawkcp_t {
 
 	ikcpcb *kcp;
 	unsigned int conv;
-	__be32 remote_addr;
-	__be16 remote_port;
-
 	unsigned char remote_id[6];
 
 	peer_t *peer;
@@ -30,12 +27,12 @@ typedef struct rawkcp_t {
 } rawkcp_t;
 
 extern int __rawkcp_init(void);
-extern rawkcp_t *rawkcp_new(unsigned int conv);
+extern rawkcp_t *rawkcp_new(unsigned int conv, const unsigned char *remote_id);
 extern void rawkcp_free(rawkcp_t *rkcp);
 extern int rawkcp_insert(rawkcp_t *rkcp);
 
 extern int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user);
 
-extern rawkcp_t *rawkcp_lookup(unsigned int conv, unsigned int remote_addr, unsigned short remote_port);
+extern rawkcp_t *rawkcp_lookup(unsigned int conv, const unsigned char *remote_id);
 
 #endif /* _RAWKCP_H_ */
