@@ -291,18 +291,57 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 		pipe_t *pipe;
 
 		conv = ikcp_getconv(endpoint_recv_ctx->buf->data);
+
+		printf("endpoint: recv msg: conv=%u from=%u.%u.%u.%u:%u\n", conv, NIPV4_ARG(addr.sin_addr.s_addr), htons(addr.sin_port));
+
 		pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
+		if (pipe == NULL) {
+			return;
+		}
 		rkcp = rawkcp_lookup(conv, pipe->peer->id);
 		//TODO create rkcp
 
-		if (rkcp) {
-			int ret = ikcp_input(rkcp->kcp, (const char *)endpoint_recv_ctx->buf->data, endpoint_recv_ctx->buf->len);
-			if (ret < 0) {
-				printf("conv [%d] ikcp_input failed [%d]\n", conv, ret);
+		if (rkcp == NULL) {
+			//TODO in-comming connection
+			rkcp = rawkcp_new(conv, pipe->peer->id);
+			if (rkcp == NULL) {
+				return;
 			}
+			rkcp->peer = pipe->peer;
 		}
 
-		printf("endpoint: recv msg: conv=%u from=%u.%u.%u.%u:%u\n", conv, NIPV4_ARG(addr.sin_addr.s_addr), htons(addr.sin_port));
+		int ret = ikcp_input(rkcp->kcp, (const char *)endpoint_recv_ctx->buf->data, endpoint_recv_ctx->buf->len);
+		if (ret < 0) {
+			printf("conv [%d] ikcp_input failed [%d]\n", conv, ret);
+		}
+
+		if (rkcp->remote) {
+			//TODO
+			return;
+		}
+		if (rkcp->local) {
+			//TODO
+			return;
+		}
+
+		//new rkcp
+		do {
+			if (rkcp->buf == NULL) {
+				rkcp->buf = malloc(sizeof(buffer_t));
+				rkcp->buf->idx = 0;
+				rkcp->buf->len = 0;
+			}
+
+			int len = ikcp_recv(rkcp->kcp, (char *)rkcp->buf->data, BUF_SIZE - rkcp->buf->len);
+			if (len < 0) {
+				return;
+			}
+			rkcp->buf->len += len;
+
+			//TODO
+			//decode and make new conncection to ...
+
+		} while(0);
 	}
 }
 
@@ -587,7 +626,7 @@ int endpoint_peer_insert(peer_t *peer)
 	peer_t *pos;
 	struct hlist_head *head;
 	
-	hash = jhash_2words(*(unsigned int *)&peer->id[0], *(unsigned short *)&peer->id[4], peer_rnd) % peer_hash_size;
+	hash = jhash_2words(get_byte4(&peer->id[0]), get_byte2(&peer->id[4]), peer_rnd) % peer_hash_size;
 	head = &peer_hash[hash];
 
 	hlist_for_each_entry(pos, head, hnode) {

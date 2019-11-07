@@ -24,6 +24,7 @@ typedef struct rawkcp_t {
 	endpoint_t *endpoint;
 	struct remote_t *remote;
 	struct local_t *local;//fake local
+	buffer_t *buf;
 } rawkcp_t;
 
 extern int __rawkcp_init(void);
