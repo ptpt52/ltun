@@ -218,10 +218,111 @@ static void close_and_free_local(EV_P_ local_t *local)
 {
 }
 
+static void local_recv_cb(EV_P_ ev_io *w, int revents)
+{
+	local_ctx_t *local_recv_ctx = (local_ctx_t *)w;
+	local_t *local              = local_recv_ctx->local;
+	rawkcp_t *rkcp              = local->rkcp;
+
+	if (rkcp == NULL) {
+		printf("invalid rkcp\n");
+		close_and_free_local(EV_A_ local);
+		return;
+	}
+
+	ssize_t r = recv(local->fd, rkcp->buf->data, BUF_SIZE, 0);
+	if (r == 0) {
+		// connection closed
+		close_and_free_local(EV_A_ local);
+		return;
+	} else if (r == -1) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			return;
+		} else {
+			close_and_free_local(EV_A_ local);
+			return;
+		}
+	}
+
+	rkcp->buf->len = r;
+
+	if (local->stage == STAGE_STREAM) {
+		ev_timer_again(EV_A_ & local->watcher);
+
+		int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
+		if (s < 0) {
+			perror("local_recv_send");
+			close_and_free_local(EV_A_ local);
+		}
+		return;
+	} else if (local->stage == STAGE_INIT) {
+		// waiting on remote connected event
+		ev_io_stop(EV_A_ & local_recv_ctx->io);
+		return;
+	}
+}
+
+static void local_send_cb(EV_P_ ev_io *w, int revents)
+{
+	local_ctx_t *local_send_ctx = (local_ctx_t *)w;
+	local_t *local              = local_send_ctx->local;
+	rawkcp_t *rkcp            = local->rkcp;
+
+	if (rkcp == NULL) {
+		printf("invalid rkcp\n");
+		close_and_free_local(EV_A_ local);
+		return;
+	}
+
+	if (local->buf->len == 0) {
+		// close and free
+		close_and_free_local(EV_A_ local);
+		return;
+	} else {
+		// has data to send
+		ssize_t s = send(local->fd, local->buf->data + local->buf->idx, local->buf->len, 0);
+		if (s == -1) {
+			if (errno != EAGAIN && errno != EWOULDBLOCK) {
+				perror("local_send_send");
+				close_and_free_local(EV_A_ local);
+			}
+			return;
+		} else if (s < local->buf->len) {
+			// partly sent, move memory, wait for the next time to send
+			local->buf->len -= s;
+			local->buf->idx += s;
+			return;
+		} else {
+			// all sent out, wait for reading
+			local->buf->len = 0;
+			local->buf->idx = 0;
+			ev_io_stop(EV_A_ & local_send_ctx->io);
+		}
+	}
+}
+
 static local_t *new_local(int fd)
 {
-	//TODO
-	return NULL;
+	local_t *local = malloc(sizeof(local_t));
+	memset(local, 0, sizeof(local_t));
+
+	local->recv_ctx = malloc(sizeof(local_ctx_t));
+	local->send_ctx = malloc(sizeof(local_ctx_t));
+	local->buf = malloc(sizeof(buffer_t));
+	local->buf->len = 0;
+	local->buf->idx = 0;
+	memset(local->recv_ctx, 0, sizeof(local_ctx_t));
+	memset(local->send_ctx, 0, sizeof(local_ctx_t));
+	local->fd                  = fd;
+	local->recv_ctx->local    = local;
+	local->recv_ctx->connected = 0;
+	local->send_ctx->local    = local;
+	local->send_ctx->connected = 0;
+
+	ev_io_init(&local->recv_ctx->io, local_recv_cb, fd, EV_READ);
+	ev_io_init(&local->send_ctx->io, local_send_cb, fd, EV_WRITE);
+
+	return local;
 }
 
 local_t *connect_to_local(EV_P_ struct addrinfo *res)
@@ -298,8 +399,8 @@ static void remote_send_handshake(EV_P_ remote_t *remote)
 
 static void server_recv_cb(EV_P_ ev_io *w, int revents)
 {
-	server_t *server = (server_t *)w;
-	server_ctx_t *server_recv_ctx = server->recv_ctx;
+	server_ctx_t *server_recv_ctx = (server_ctx_t *)w;
+	server_t *server = server_recv_ctx->server;
 	remote_t *remote              = server->remote;
 
 	if (remote == NULL) {

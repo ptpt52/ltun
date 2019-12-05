@@ -42,6 +42,7 @@ typedef struct local_ctx_t {
 } local_ctx_t;
 
 typedef struct local_t {
+	ev_timer watcher;
 	int fd;
 	int stage;
 
