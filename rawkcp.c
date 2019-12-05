@@ -75,51 +75,6 @@ int __rawkcp_init(void)
 	return 0;
 }
 
-static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
-{
-	rawkcp_t *rkcp = (rawkcp_t *)watcher;
-
-	if (rkcp->kcp) {
-		ikcp_update(rkcp->kcp, iclock());
-	}
-
-	ev_timer_again(EV_A_ & rkcp->watcher);
-}
-
-rawkcp_t *rawkcp_new(unsigned int conv, const unsigned char *remote_id)
-{
-	rawkcp_t *rkcp = malloc(sizeof(rawkcp_t));
-	if (!rkcp)
-		return NULL;
-
-	INIT_HLIST_NODE(&rkcp->hnode);
-
-	rkcp->conv = conv;
-	rkcp->kcp = ikcp_create(rkcp->conv, rkcp);
-	if (!rkcp->kcp) {
-		free(rkcp);
-		return NULL;
-	}
-	memcpy(rkcp->remote_id, remote_id, 6);
-
-	rkcp->kcp->output = rawkcp_output;
-	ikcp_wndsize(rkcp->kcp, 128, 128);
-	ikcp_nodelay(rkcp->kcp, 0, 10, 0, 0);
-
-	ev_timer_init(&rkcp->watcher, rawkcp_watcher_cb, 0.1, 0.1);
-
-	return rkcp;
-}
-
-void rawkcp_free(rawkcp_t *rkcp)
-{
-	if (rkcp->kcp) {
-		ikcp_release(rkcp->kcp);
-	}
-
-	free(rkcp);
-}
-
 int rawkcp_insert(rawkcp_t *rkcp)
 {
 	unsigned int hash;

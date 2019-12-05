@@ -31,12 +31,12 @@ typedef struct rawkcp_t {
 } rawkcp_t;
 
 extern int __rawkcp_init(void);
-extern rawkcp_t *rawkcp_new(unsigned int conv, const unsigned char *remote_id);
-extern void rawkcp_free(rawkcp_t *rkcp);
 extern int rawkcp_insert(rawkcp_t *rkcp);
 
 extern int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user);
 
 extern rawkcp_t *rawkcp_lookup(unsigned int conv, const unsigned char *remote_id);
+
+extern IUINT32 iclock();
 
 #endif /* _RAWKCP_H_ */

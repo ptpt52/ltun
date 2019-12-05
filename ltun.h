@@ -86,6 +86,12 @@ static inline int setnonblocking(int fd)
 	return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-local_t *connect_to_local(EV_P_ struct addrinfo *res);
+extern local_t *connect_to_local(EV_P_ struct addrinfo *res);
+
+extern void close_and_free_server(EV_P_ server_t *server);
+extern void close_and_free_local(EV_P_ local_t *local);
+extern void close_and_free_rawkcp(EV_P_ rawkcp_t *rkcp);
+
+extern rawkcp_t *new_rawkcp(unsigned int conv, const unsigned char *remote_id);
 
 #endif // _LTUN_H

@@ -51,9 +51,6 @@ static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents);
 static server_t *new_server(int fd, listen_ctx_t *listener);
 static rawkcp_t *connect_to_rawkcp(EV_P_ unsigned char *remote_id);
 
-static void free_server(server_t *server);
-static void close_and_free_server(EV_P_ server_t *server);
-
 endpoint_t *default_endpoint = NULL;
 
 int endpoint_attach_rawkcp(EV_P_ endpoint_t *endpoint, rawkcp_t *rkcp)
@@ -224,7 +221,7 @@ static void free_local(local_t *local)
 	free(local);
 }
 
-static void close_and_free_local(EV_P_ local_t *local)
+void close_and_free_local(EV_P_ local_t *local)
 {
 	if (local != NULL) {
 		ev_io_stop(EV_A_ & local->send_ctx->io);
@@ -386,6 +383,65 @@ local_t *connect_to_local(EV_P_ struct addrinfo *res)
 	return local;
 }
 
+static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
+{
+	rawkcp_t *rkcp = (rawkcp_t *)watcher;
+
+	if (rkcp->kcp) {
+		ikcp_update(rkcp->kcp, iclock());
+	}
+
+	ev_timer_again(EV_A_ & rkcp->watcher);
+}
+
+static void free_rawkcp(rawkcp_t *rkcp)
+{
+	hlist_del_init(&rkcp->hnode);
+	if (rkcp->kcp) {
+		ikcp_release(rkcp->kcp);
+	}
+	if (rkcp->server != NULL) {
+		rkcp->server->rkcp = NULL;
+	}
+	if (rkcp->local != NULL) {
+		rkcp->local->rkcp = NULL;
+	}
+	if (rkcp->buf != NULL) {
+		free(rkcp->buf);
+	}
+	free(rkcp);
+}
+
+void close_and_free_rawkcp(EV_P_ rawkcp_t *rkcp)
+{
+	if (rkcp) {
+		ev_timer_stop(EV_A_ & rkcp->watcher);
+		free_rawkcp(rkcp);
+	}
+}
+
+rawkcp_t *new_rawkcp(unsigned int conv, const unsigned char *remote_id)
+{
+	rawkcp_t *rkcp = malloc(sizeof(rawkcp_t));
+	memset(rkcp, 0, sizeof(rawkcp_t));
+
+	INIT_HLIST_NODE(&rkcp->hnode);
+	rkcp->conv = conv;
+	rkcp->kcp = ikcp_create(rkcp->conv, rkcp);
+	memcpy(rkcp->remote_id, remote_id, 6);
+	rkcp->buf = malloc(sizeof(buffer_t));
+	rkcp->buf->len = 0;
+	rkcp->buf->idx = 0;
+
+	rkcp->kcp->output = rawkcp_output;
+	ikcp_wndsize(rkcp->kcp, 128, 128);
+	ikcp_nodelay(rkcp->kcp, 0, 10, 0, 0);
+
+	ev_timer_init(&rkcp->watcher, rawkcp_watcher_cb, 0.1, 0.1);
+
+	return rkcp;
+}
+
 static rawkcp_t *connect_to_rawkcp(EV_P_ unsigned char *remote_id)
 {
 	unsigned int conv;
@@ -395,12 +451,12 @@ static rawkcp_t *connect_to_rawkcp(EV_P_ unsigned char *remote_id)
 	conv_type = id_is_gt(default_endpoint->id, remote_id);
 	conv = rawkcp_conv_alloc(conv_type);
 
-	rkcp = rawkcp_new(conv, remote_id);
+	rkcp = new_rawkcp(conv, remote_id);
 	if (!rkcp)
 		return NULL;
 
 	if (rawkcp_attach_endpoint(EV_A_ rkcp, default_endpoint) != 0) {
-		rawkcp_free(rkcp);
+		close_and_free_rawkcp(EV_A_ rkcp);
 		return NULL;
 	}
 	rkcp->handshake = rawkcp_send_handshake;
@@ -581,7 +637,7 @@ static void free_server(server_t *server)
 	free(server);
 }
 
-static void close_and_free_server(EV_P_ server_t *server)
+void close_and_free_server(EV_P_ server_t *server)
 {
 	if (server != NULL) {
 		ev_io_stop(EV_A_ & server->send_ctx->io);
