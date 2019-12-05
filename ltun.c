@@ -210,8 +210,29 @@ static unsigned int rawkcp_conv_alloc(int type)
 	return conv;
 }
 
+static void free_local(local_t *local)
+{
+	if (local->rkcp != NULL) {
+		local->rkcp->local = NULL;
+	}
+	if (local->buf != NULL) {
+		free(local->buf);
+	}
+
+	free(local->recv_ctx);
+	free(local->send_ctx);
+	free(local);
+}
+
 static void close_and_free_local(EV_P_ local_t *local)
 {
+	if (local != NULL) {
+		ev_io_stop(EV_A_ & local->send_ctx->io);
+		ev_io_stop(EV_A_ & local->recv_ctx->io);
+		ev_timer_stop(EV_A_ & local->watcher);
+		close(local->fd);
+		free_local(local);
+	}
 }
 
 static void local_recv_cb(EV_P_ ev_io *w, int revents)
@@ -297,6 +318,18 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 	}
 }
 
+static void local_timeout_cb(EV_P_ ev_timer *watcher, int revents)
+{
+	local_t *local = container_of(watcher, local_t, watcher);
+
+	if (verbose) {
+		printf("TCP connection timeout\n");
+	}
+
+	//TODO
+	close_and_free_local(EV_A_ local);
+}
+
 static local_t *new_local(int fd)
 {
 	local_t *local = malloc(sizeof(local_t));
@@ -313,8 +346,11 @@ static local_t *new_local(int fd)
 	local->recv_ctx->local    = local;
 	local->send_ctx->local    = local;
 
+	int request_timeout = MAX_REQUEST_TIMEOUT + rand() % MAX_REQUEST_TIMEOUT;
+
 	ev_io_init(&local->recv_ctx->io, local_recv_cb, fd, EV_READ);
 	ev_io_init(&local->send_ctx->io, local_send_cb, fd, EV_WRITE);
+	ev_timer_init(&local->watcher, local_timeout_cb, request_timeout, request_timeout);
 
 	return local;
 }
@@ -553,10 +589,6 @@ static void close_and_free_server(EV_P_ server_t *server)
 		ev_timer_stop(EV_A_ & server->watcher);
 		close(server->fd);
 		free_server(server);
-		if (verbose) {
-			server_conn--;
-			printf("current server connection: %d\n", server_conn);
-		}
 	}
 }
 
