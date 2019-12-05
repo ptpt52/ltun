@@ -18,7 +18,6 @@ typedef struct listen_ctx_t {
 
 typedef struct server_ctx_t {
 	ev_io io;
-	int stage;
 	struct server_t *server;
 } server_ctx_t;
 
@@ -37,7 +36,6 @@ typedef struct server_t {
 
 typedef struct local_ctx_t {
 	ev_io io;
-	int stage;
 	struct local_t *local;
 } local_ctx_t;
 

@@ -226,6 +226,11 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		return;
 	}
 
+	if (rkcp->send_stage != STAGE_STREAM) {
+		ev_io_stop(EV_A_ & local_recv_ctx->io);
+		return;
+	}
+
 	ssize_t r = recv(local->fd, rkcp->buf->data, BUF_SIZE, 0);
 	if (r == 0) {
 		// connection closed
@@ -242,20 +247,14 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 
 	rkcp->buf->len = r;
 
-	if (local->stage == STAGE_STREAM) {
-		ev_timer_again(EV_A_ & local->watcher);
+	ev_timer_again(EV_A_ & local->watcher);
 
-		int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
-		if (s < 0) {
-			perror("local_recv_send");
-			close_and_free_local(EV_A_ local);
-		}
-		return;
-	} else if (local->stage == STAGE_INIT) {
-		// waiting on remote connected event
-		ev_io_stop(EV_A_ & local_recv_ctx->io);
-		return;
+	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
+	if (s < 0) {
+		perror("local ikcp_send");
+		close_and_free_local(EV_A_ local);
 	}
+	return;
 }
 
 static void local_send_cb(EV_P_ ev_io *w, int revents)
@@ -293,7 +292,7 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 			local->buf->len = 0;
 			local->buf->idx = 0;
 			ev_io_stop(EV_A_ & local_send_ctx->io);
-			local->recv_ctx->stage = STAGE_STREAM; //start stream
+			rkcp->recv_stage = STAGE_STREAM; //start stream
 		}
 	}
 }
@@ -312,9 +311,7 @@ static local_t *new_local(int fd)
 	memset(local->send_ctx, 0, sizeof(local_ctx_t));
 	local->fd                  = fd;
 	local->recv_ctx->local    = local;
-	local->recv_ctx->stage = STAGE_INIT;
 	local->send_ctx->local    = local;
-	local->send_ctx->stage = STAGE_INIT;
 
 	ev_io_init(&local->recv_ctx->io, local_recv_cb, fd, EV_READ);
 	ev_io_init(&local->send_ctx->io, local_send_cb, fd, EV_WRITE);
@@ -402,6 +399,11 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 		return;
 	}
 
+	if (rkcp->send_stage != STAGE_STREAM) {
+		ev_io_stop(EV_A_ & server_recv_ctx->io);
+		return;
+	}
+
 	ssize_t r = recv(server->fd, rkcp->buf->data, BUF_SIZE, 0);
 	if (r == 0) {
 		// connection closed
@@ -426,21 +428,15 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	tx += r;
 	rkcp->buf->len = r;
 
-	if (server->stage == STAGE_STREAM) {
-		ev_timer_again(EV_A_ & server->watcher);
+	ev_timer_again(EV_A_ & server->watcher);
 
-		int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
-		if (s < 0) {
-			perror("server_recv_send");
-			//TODO
-			close_and_free_server(EV_A_ server);
-		}
-		return;
-	} else {
-		// waiting on rkcp connected event
-		ev_io_stop(EV_A_ & server_recv_ctx->io);
-		return;
+	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
+	if (s < 0) {
+		perror("server_recv_send");
+		//TODO
+		close_and_free_server(EV_A_ server);
 	}
+	return;
 }
 
 static void server_send_cb(EV_P_ ev_io *w, int revents)
@@ -483,7 +479,7 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 			server->buf->len = 0;
 			server->buf->idx = 0;
 			ev_io_stop(EV_A_ & server_send_ctx->io);
-			server->send_ctx->stage = STAGE_STREAM;
+			rkcp->recv_stage = STAGE_STREAM;
 		}
 	}
 }
@@ -520,9 +516,7 @@ static server_t *new_server(int fd, listen_ctx_t *listener)
 	server->buf->idx = 0;
 	server->fd                  = fd;
 	server->recv_ctx->server    = server;
-	server->recv_ctx->stage = 0;
 	server->send_ctx->server    = server;
-	server->send_ctx->stage = 0;
 	server->stage               = STAGE_INIT;
 	server->listen_ctx          = listener;
 	server->rkcp              = NULL;

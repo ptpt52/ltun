@@ -15,6 +15,8 @@ typedef struct rawkcp_t {
 	ev_timer watcher;
 
 	struct hlist_node hnode;
+	int send_stage;
+	int recv_stage;
 
 	ikcpcb *kcp;
 	unsigned int conv;

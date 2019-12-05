@@ -321,7 +321,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 		}
 		if (rkcp->local) {
 			local_t *local = rkcp->local;
-			if (local->recv_ctx->stage == STAGE_PAUSE) {
+			if (rkcp->recv_stage == STAGE_PAUSE) {
 				return;
 			}
 			int len = ikcp_recv(rkcp->kcp, (char *)local->buf->data, BUF_SIZE);
@@ -343,7 +343,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				// partly sent, move memory, wait for the next time to send
 				local->buf->len -= s;
 				local->buf->idx += s;
-				local->recv_ctx->stage = STAGE_PAUSE; //pause stream
+				rkcp->recv_stage = STAGE_PAUSE; //pause stream
 				ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
 				return;
 			} else {
