@@ -22,9 +22,10 @@ typedef struct rawkcp_t {
 
 	peer_t *peer;
 	endpoint_t *endpoint;
-	struct remote_t *remote;
+	struct server_t *server;
 	struct local_t *local;//fake local
 	buffer_t *buf;
+	void (*handshake)(EV_P_ struct rawkcp_t *rkcp);
 } rawkcp_t;
 
 extern int __rawkcp_init(void);

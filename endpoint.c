@@ -243,8 +243,8 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 							break;
 						}
 						//TODO callback rawkcp
-						if (pos->remote && pos->remote->handshake) {
-							pos->remote->handshake(EV_A_ pos->remote);
+						if (pos->server && pos->handshake) {
+							pos->handshake(EV_A_ pos);
 							printf("callback rawkcp: start remote->handshake\n");
 						}
 					}
@@ -315,7 +315,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			printf("conv [%d] ikcp_input failed [%d]\n", conv, ret);
 		}
 
-		if (rkcp->remote) {
+		if (rkcp->server) {
 			//TODO
 			return;
 		}

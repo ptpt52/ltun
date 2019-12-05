@@ -43,17 +43,14 @@
 
 static void signal_cb(EV_P_ ev_signal *w, int revents);
 static void accept_cb(EV_P_ ev_io *w, int revents);
-static void remote_send_handshake(EV_P_ remote_t *remote);
+static void rawkcp_send_handshake(EV_P_ rawkcp_t *rkcp);
 static void server_send_cb(EV_P_ ev_io *w, int revents);
 static void server_recv_cb(EV_P_ ev_io *w, int revents);
 static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents);
 
-static remote_t *new_remote(rawkcp_t *rkcp);
 static server_t *new_server(int fd, listen_ctx_t *listener);
-static remote_t *connect_to_remote(EV_P_ unsigned char *remote_id);
+static rawkcp_t *connect_to_rawkcp(EV_P_ unsigned char *remote_id);
 
-static void free_remote(remote_t *remote);
-static void close_and_free_remote(EV_P_ remote_t *remote);
 static void free_server(server_t *server);
 static void close_and_free_server(EV_P_ server_t *server);
 
@@ -102,7 +99,6 @@ static int set_reuseport(int socket)
 	return setsockopt(socket, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
 }
 
-static int remote_conn = 0;
 static int server_conn = 0;
 
 uint64_t tx                  = 0;
@@ -357,7 +353,7 @@ local_t *connect_to_local(EV_P_ struct addrinfo *res)
 	return local;
 }
 
-static remote_t *connect_to_remote(EV_P_ unsigned char *remote_id)
+static rawkcp_t *connect_to_rawkcp(EV_P_ unsigned char *remote_id)
 {
 	unsigned int conv;
 	int conv_type;
@@ -374,49 +370,45 @@ static remote_t *connect_to_remote(EV_P_ unsigned char *remote_id)
 		rawkcp_free(rkcp);
 		return NULL;
 	}
+	rkcp->handshake = rawkcp_send_handshake;
 
-	remote_t *remote = new_remote(rkcp);
-
-	//close_and_free_remote(EV_A_ remote);
-
-	return remote;
+	return rkcp;
 }
 
-static void remote_send_handshake(EV_P_ remote_t *remote)
+static void rawkcp_send_handshake(EV_P_ rawkcp_t *rkcp)
 {
-	remote->buf->len = 4 + 4 + 2;
-	set_byte4(remote->buf->data, htonl(KTUN_P_MAGIC));
-	set_byte4(remote->buf->data + 4, htonl((192<<24)|(168<<16)|(16<<8)|(1<<0)));
-	set_byte2(remote->buf->data + 4 + 4, htons(80));
-	//remote->buf->len = sprintf((char *)remote->buf->data, "connect 127.0.0.1:80\n");
-	int s = ikcp_send(remote->rkcp->kcp, (const char *)remote->buf->data, remote->buf->len);
+	rkcp->buf->len = 4 + 4 + 2;
+	set_byte4(rkcp->buf->data, htonl(KTUN_P_MAGIC));
+	set_byte4(rkcp->buf->data + 4, htonl((192<<24)|(168<<16)|(16<<8)|(1<<0)));
+	set_byte2(rkcp->buf->data + 4 + 4, htons(80));
+	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {
 		perror("server_recv_send");
-		close_and_free_remote(EV_A_ remote);
+		//TODO
 	}
 
-	ev_timer_start(EV_A_ & remote->rkcp->watcher);
+	ev_timer_start(EV_A_ & rkcp->watcher);
 }
 
 static void server_recv_cb(EV_P_ ev_io *w, int revents)
 {
 	server_ctx_t *server_recv_ctx = (server_ctx_t *)w;
 	server_t *server = server_recv_ctx->server;
-	remote_t *remote              = server->remote;
+	rawkcp_t *rkcp = server->rkcp;
 
-	if (remote == NULL) {
-		printf("invalid remote\n");
+	if (rkcp == NULL) {
+		printf("invalid rkcp\n");
 		close_and_free_server(EV_A_ server);
 		return;
 	}
 
-	ssize_t r = recv(server->fd, remote->buf->data, BUF_SIZE, 0);
+	ssize_t r = recv(server->fd, rkcp->buf->data, BUF_SIZE, 0);
 	if (r == 0) {
 		// connection closed
 		if (verbose) {
 			printf("server_recv close the connection\n");
 		}
-		close_and_free_remote(EV_A_ remote);
+		//TODO
 		close_and_free_server(EV_A_ server);
 		return;
 	} else if (r == -1) {
@@ -426,29 +418,27 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 			return;
 		} else {
 			//perror("server recv");
-			close_and_free_remote(EV_A_ remote);
+			//TODO
 			close_and_free_server(EV_A_ server);
 			return;
 		}
 	}
 	tx += r;
-	remote->buf->len = r;
+	rkcp->buf->len = r;
 
 	if (server->stage == STAGE_STREAM) {
 		ev_timer_again(EV_A_ & server->watcher);
 
-		int s = ikcp_send(remote->rkcp->kcp, (const char *)remote->buf->data, remote->buf->len);
+		int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 		if (s < 0) {
 			perror("server_recv_send");
-			close_and_free_remote(EV_A_ remote);
+			//TODO
 			close_and_free_server(EV_A_ server);
 		}
 		return;
-	} else if (server->stage == STAGE_INIT) {
-		// waiting on remote connected event
+	} else {
+		// waiting on rkcp connected event
 		ev_io_stop(EV_A_ & server_recv_ctx->io);
-		//ev_io_start(EV_A_ & remote->send_ctx->io);
-		//FIXME start remote send
 		return;
 	}
 }
@@ -457,9 +447,9 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 {
 	server_ctx_t *server_send_ctx = (server_ctx_t *)w;
 	server_t *server              = server_send_ctx->server;
-	remote_t *remote              = server->remote;
+	rawkcp_t *rkcp              = server->rkcp;
 
-	if (remote == NULL) {
+	if (rkcp == NULL) {
 		printf("invalid server\n");
 		close_and_free_server(EV_A_ server);
 		return;
@@ -470,7 +460,7 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 		if (verbose) {
 			printf("server_send close the connection\n");
 		}
-		close_and_free_remote(EV_A_ remote);
+		//TODO
 		close_and_free_server(EV_A_ server);
 		return;
 	} else {
@@ -479,7 +469,7 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 		if (s == -1) {
 			if (errno != EAGAIN && errno != EWOULDBLOCK) {
 				perror("server_send_send");
-				close_and_free_remote(EV_A_ remote);
+				//TODO
 				close_and_free_server(EV_A_ server);
 			}
 			return;
@@ -493,7 +483,7 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 			server->buf->len = 0;
 			server->buf->idx = 0;
 			ev_io_stop(EV_A_ & server_send_ctx->io);
-			ev_io_start(EV_A_ & remote->recv_ctx->io);
+			server->send_ctx->stage = STAGE_STREAM;
 		}
 	}
 }
@@ -501,72 +491,13 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 {
 	server_t *server = container_of(watcher, server_t, watcher);
-	remote_t *remote = server->remote;
 
 	if (verbose) {
 		printf("TCP connection timeout\n");
 	}
 
-	close_and_free_remote(EV_A_ remote);
+	//TODO
 	close_and_free_server(EV_A_ server);
-}
-
-static remote_t *new_remote(rawkcp_t *rkcp)
-{
-	if (verbose) {
-		remote_conn++;
-	}
-
-	remote_t *remote = malloc(sizeof(remote_t));
-	memset(remote, 0, sizeof(remote_t));
-
-	remote->recv_ctx = malloc(sizeof(remote_ctx_t));
-	remote->send_ctx = malloc(sizeof(remote_ctx_t));
-	remote->buf = malloc(sizeof(buffer_t));
-	remote->buf->len = 0;
-	remote->buf->idx = 0;
-	memset(remote->recv_ctx, 0, sizeof(remote_ctx_t));
-	memset(remote->send_ctx, 0, sizeof(remote_ctx_t));
-	remote->rkcp                  = rkcp;
-	remote->recv_ctx->remote    = remote;
-	remote->recv_ctx->connected = 0;
-	remote->send_ctx->remote    = remote;
-	remote->send_ctx->connected = 0;
-	remote->server              = NULL;
-	remote->handshake = remote_send_handshake;
-
-	rkcp->remote = remote;
-	//ev_io_init(&remote->recv_ctx->io, remote_recv_cb, fd, EV_READ);
-	//ev_io_init(&remote->send_ctx->io, remote_send_cb, fd, EV_WRITE);
-
-	return remote;
-}
-
-static void free_remote(remote_t *remote)
-{
-	if (remote->server != NULL) {
-		remote->server->remote = NULL;
-	}
-	if (remote->buf != NULL) {
-		free(remote->buf);
-	}
-	free(remote->recv_ctx);
-	free(remote->send_ctx);
-	free(remote);
-}
-
-static void close_and_free_remote(EV_P_ remote_t *remote)
-{
-	if (remote != NULL) {
-		ev_io_stop(EV_A_ & remote->send_ctx->io);
-		ev_io_stop(EV_A_ & remote->recv_ctx->io);
-		//TODO free
-		free_remote(remote);
-		if (verbose) {
-			remote_conn--;
-			printf("current remote connection: %d\n", remote_conn);
-		}
-	}
 }
 
 static server_t *new_server(int fd, listen_ctx_t *listener)
@@ -589,12 +520,12 @@ static server_t *new_server(int fd, listen_ctx_t *listener)
 	server->buf->idx = 0;
 	server->fd                  = fd;
 	server->recv_ctx->server    = server;
-	server->recv_ctx->connected = 0;
+	server->recv_ctx->stage = 0;
 	server->send_ctx->server    = server;
-	server->send_ctx->connected = 0;
+	server->send_ctx->stage = 0;
 	server->stage               = STAGE_INIT;
 	server->listen_ctx          = listener;
-	server->remote              = NULL;
+	server->rkcp              = NULL;
 
 	int request_timeout = min(MAX_REQUEST_TIMEOUT, listener->timeout)
 	                      + rand() % MAX_REQUEST_TIMEOUT;
@@ -608,8 +539,8 @@ static server_t *new_server(int fd, listen_ctx_t *listener)
 
 static void free_server(server_t *server)
 {
-	if (server->remote != NULL) {
-		server->remote->server = NULL;
+	if (server->rkcp != NULL) {
+		server->rkcp->server = NULL;
 	}
 	if (server->buf != NULL) {
 		free(server->buf);
@@ -682,18 +613,17 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 			close_and_free_server(EV_A_ server);
 			return;
 		}
-		remote_t *remote = connect_to_remote(EV_A_ remote_id);
-		if (remote == NULL) {
+		rawkcp_t *rkcp = connect_to_rawkcp(EV_A_ remote_id);
+		if (rkcp == NULL) {
 			printf("connect error\n");
 			close_and_free_server(EV_A_ server);
 			return;
 		} else {
-			server->remote = remote;
-			remote->server = server;
-			//ev_io_start(EV_A_ & remote->recv_ctx->io);
-			//ev_io_start(EV_A_ & remote->send_ctx->io);
-			if (remote->rkcp->peer && remote->handshake) {
-				remote->handshake(EV_A_ remote);
+			server->rkcp = rkcp;
+			rkcp->server = server;
+			//TODO
+			if (rkcp->peer && rkcp->handshake) {
+				rkcp->handshake(EV_A_ rkcp);
 			}
 		}
 	}

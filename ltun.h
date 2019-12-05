@@ -18,7 +18,7 @@ typedef struct listen_ctx_t {
 
 typedef struct server_ctx_t {
 	ev_io io;
-	int connected;
+	int stage;
 	struct server_t *server;
 } server_ctx_t;
 
@@ -32,7 +32,7 @@ typedef struct server_t {
 	struct server_ctx_t *recv_ctx;
 	struct server_ctx_t *send_ctx;
 	struct listen_ctx_t *listen_ctx;
-	struct remote_t *remote;
+	struct rawkcp_t *rkcp;
 } server_t;
 
 typedef struct local_ctx_t {
@@ -52,22 +52,6 @@ typedef struct local_t {
 	struct local_ctx_t *send_ctx;
 	rawkcp_t *rkcp;
 } local_t;
-
-typedef struct remote_ctx_t {
-	ev_io io;
-	int stage;
-	struct remote_t *remote;
-} remote_ctx_t;
-
-typedef struct remote_t {
-	rawkcp_t *rkcp;
-	buffer_t *buf;
-
-	struct remote_ctx_t *recv_ctx;
-	struct remote_ctx_t *send_ctx;
-	struct server_t *server;
-	void (*handshake)(EV_P_ struct remote_t *remote);
-} remote_t;
 
 #define STAGE_ERROR     -1  /* Error detected                   */
 #define STAGE_INIT       0  /* Initial stage                    */
