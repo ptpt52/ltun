@@ -297,6 +297,7 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 			local->buf->len = 0;
 			local->buf->idx = 0;
 			ev_io_stop(EV_A_ & local_send_ctx->io);
+			local->recv_ctx->stage = STAGE_STREAM; //start stream
 		}
 	}
 }
@@ -315,9 +316,9 @@ static local_t *new_local(int fd)
 	memset(local->send_ctx, 0, sizeof(local_ctx_t));
 	local->fd                  = fd;
 	local->recv_ctx->local    = local;
-	local->recv_ctx->connected = 0;
+	local->recv_ctx->stage = STAGE_INIT;
 	local->send_ctx->local    = local;
-	local->send_ctx->connected = 0;
+	local->send_ctx->stage = STAGE_INIT;
 
 	ev_io_init(&local->recv_ctx->io, local_recv_cb, fd, EV_READ);
 	ev_io_init(&local->send_ctx->io, local_send_cb, fd, EV_WRITE);

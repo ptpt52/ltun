@@ -37,7 +37,7 @@ typedef struct server_t {
 
 typedef struct local_ctx_t {
 	ev_io io;
-	int connected;
+	int stage;
 	struct local_t *local;
 } local_ctx_t;
 
@@ -55,7 +55,7 @@ typedef struct local_t {
 
 typedef struct remote_ctx_t {
 	ev_io io;
-	int connected;
+	int stage;
 	struct remote_t *remote;
 } remote_ctx_t;
 
@@ -72,7 +72,7 @@ typedef struct remote_t {
 #define STAGE_ERROR     -1  /* Error detected                   */
 #define STAGE_INIT       0  /* Initial stage                    */
 #define STAGE_HANDSHAKE  1  /* Handshake with client            */
-#define STAGE_PARSE      2  /* Parse the header                 */
+#define STAGE_PAUSE      2  /* Pause data stream                */
 #define STAGE_RESOLVE    4  /* Resolve the hostname             */
 #define STAGE_WAIT       5  /* Wait for more data               */
 #define STAGE_STREAM     6  /* Stream between client and server */
