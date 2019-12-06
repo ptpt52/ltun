@@ -188,7 +188,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				peer_t *peer = NULL;
 				pipe_t *pipe = NULL;
 
-				printf("accept in-comming connection from=%02X:%02X:%02X:%02X:%02X:%02X, to=%02X:%02X:%02X:%02X:%02X:%02X\n",
+				printf("accept in-comming connection smac=%02X:%02X:%02X:%02X:%02X:%02X, dmac=%02X:%02X:%02X:%02X:%02X:%02X\n",
 						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
 						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
 
@@ -301,8 +301,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			return;
 		}
 		rkcp = rawkcp_lookup(conv, pipe->peer->id);
-		//TODO create rkcp
-
 		if (rkcp == NULL) {
 			int ret;
 			rkcp = new_rawkcp(conv, pipe->peer->id);
@@ -777,7 +775,6 @@ int endpoint_peer_init(void)
 
 peer_t *endpoint_peer_lookup(unsigned char *id)
 {
-	//TODO
 	unsigned int hash;
 	peer_t *pos;
 	struct hlist_head *head;

@@ -279,7 +279,6 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 			perror("local_recv: recv");
 			close_and_free_local(EV_A_ local);
 			close_and_free_rawkcp(EV_A_ rkcp);
-			//TODO: connect refused send to rkcp
 			return;
 		}
 	}
@@ -468,7 +467,7 @@ static void free_rawkcp(rawkcp_t *rkcp)
 void close_and_free_rawkcp(EV_P_ rawkcp_t *rkcp)
 {
 	if (rkcp) {
-		//TODO: send close to rkcp and free rawkcp in 5s
+		//TODO: -send close to rkcp and free rawkcp in 5s
 		ev_timer_stop(EV_A_ & rkcp->watcher);
 		free_rawkcp(rkcp);
 	}
