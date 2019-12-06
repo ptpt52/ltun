@@ -41,6 +41,9 @@
 #define MAXCONN 1024
 #endif
 
+unsigned char m_mac[6] = {0,0,0,0,0,0};
+unsigned char n_mac[6] = {0,0,0,0,0,0};
+
 static void signal_cb(EV_P_ ev_signal *w, int revents);
 static void accept_cb(EV_P_ ev_io *w, int revents);
 static void rawkcp_send_handshake(EV_P_ rawkcp_t *rkcp);
@@ -178,8 +181,10 @@ int create_and_bind(const char *host, const char *port)
 
 static int ltun_select_remote_id(unsigned char *remote_id)
 {
-	static unsigned char id[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0xAA};
-	memcpy(remote_id, id, 6);
+	if (n_mac[0] == 0 && n_mac[1] == 0 && n_mac[2] == 0 && n_mac[3] == 0 && n_mac[4] == 0 && n_mac[5] == 0) {
+		return -1;
+	}
+	memcpy(remote_id, n_mac, 6);
 	return 0;
 }
 
@@ -745,7 +750,8 @@ void usage()
 	printf("       [-l <local_port>]          Port number of your local server.\n");
 	printf("       [-t <timeout>]             Socket timeout in seconds.\n");
 	printf("       [-k <ktun>]                Ktun server\n");
-	printf("       [-m <mac>]                 Mac address\n");
+	printf("       [-m <mac>]                 Local Mac address\n");
+	printf("       [-n <mac>]                 Target Mac address\n");
 	printf("       [-v]                       Verbose mode.\n");
 	printf("       [-h, --help]               Print this message.\n");
 	printf("\n");
@@ -761,12 +767,11 @@ int main(int argc, char **argv)
 
 	int server_num = 0;
 	const char *server_host[MAX_REMOTE_NUM];
-	unsigned char mac[6] = {0,0,0,0,0,0};
 	char *ktun = NULL;
 
 	opterr = 0;
 
-	while ((c = getopt_long(argc, argv, "s:l:t:m:k:hv", NULL, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "s:l:t:m:n:k:hv", NULL, NULL)) != -1) {
 		switch (c) {
 			case 's':
 				if (server_num < MAX_REMOTE_NUM) {
@@ -783,7 +788,10 @@ int main(int argc, char **argv)
 				verbose = 1;
 				break;
 			case 'm':
-				parse_optarg_mac(mac, optarg);
+				parse_optarg_mac(m_mac, optarg);
+				break;
+			case 'n':
+				parse_optarg_mac(n_mac, optarg);
 				break;
 			case 'k':
 				ktun = optarg;
@@ -815,7 +823,7 @@ int main(int argc, char **argv)
 		ktun = "ec1ns.ptpt52.com";
 	}
 
-	if (mac[0] == 0 && mac[1] == 0 && mac[2] == 0 && mac[3] == 0 && mac[4] == 0 && mac[5] == 0) {
+	if (m_mac[0] == 0 && m_mac[1] == 0 && m_mac[2] == 0 && m_mac[3] == 0 && m_mac[4] == 0 && m_mac[5] == 0) {
 		usage();
 		exit(EXIT_FAILURE);
 	}
@@ -879,8 +887,8 @@ int main(int argc, char **argv)
 		FATAL("endpoint_new error");
 	}
 
-	memcpy(endpoint->id, mac, 6);
-	printf("mac: %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+	memcpy(endpoint->id, m_mac, 6);
+	printf("m_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", m_mac[0], m_mac[1], m_mac[2], m_mac[3], m_mac[4], m_mac[5]);
 
 	if (endpoint_getaddrinfo(ktun, "910", &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
 		FATAL("endpoint_getaddrinfo error");
