@@ -303,11 +303,18 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 		//TODO create rkcp
 
 		if (rkcp == NULL) {
+			int ret;
 			rkcp = new_rawkcp(conv, pipe->peer->id);
 			if (rkcp == NULL) {
 				return;
 			}
 			rkcp->peer = pipe->peer;
+			rkcp->endpoint = endpoint;
+			ret = rawkcp_insert(rkcp);
+			if (ret != 0) {
+				close_and_free_rawkcp(EV_A_ rkcp);
+				return;
+			}
 			ev_timer_start(EV_A_ & rkcp->watcher);
 		}
 
@@ -430,8 +437,8 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						printf("connect error\n");
 						return;
 					}
-					rkcp->local = local;
 					local->rkcp = rkcp;
+					rkcp->local = local;
 				}
 			}
 		} while(0);
