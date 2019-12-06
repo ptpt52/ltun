@@ -41,8 +41,15 @@
 #define MAXCONN 1024
 #endif
 
-unsigned char m_mac[6] = {0,0,0,0,0,0};
-unsigned char n_mac[6] = {0,0,0,0,0,0};
+char *ktun = NULL;
+
+char *local_port = "1080";
+const char *local_host = "0.0.0.0";
+unsigned char local_mac[6] = {0,0,0,0,0,0};
+
+char *target_port = "80";
+const char *target_host = "127.0.0.1";
+unsigned char target_mac[6] = {0,0,0,0,0,0};
 
 static void signal_cb(EV_P_ ev_signal *w, int revents);
 static void accept_cb(EV_P_ ev_io *w, int revents);
@@ -181,10 +188,10 @@ int create_and_bind(const char *host, const char *port)
 
 static int ltun_select_remote_id(unsigned char *remote_id)
 {
-	if (n_mac[0] == 0 && n_mac[1] == 0 && n_mac[2] == 0 && n_mac[3] == 0 && n_mac[4] == 0 && n_mac[5] == 0) {
+	if (target_mac[0] == 0 && target_mac[1] == 0 && target_mac[2] == 0 && target_mac[3] == 0 && target_mac[4] == 0 && target_mac[5] == 0) {
 		return -1;
 	}
-	memcpy(remote_id, n_mac, 6);
+	memcpy(remote_id, target_mac, 6);
 	return 0;
 }
 
@@ -359,33 +366,66 @@ static local_t *new_local(int fd)
 	return local;
 }
 
-local_t *connect_to_local(EV_P_ struct addrinfo *res)
+local_t *connect_to_local(EV_P_ const char *host, const char *port)
 {
-	int sockfd;
+	local_t *local = NULL;
+	int sockfd = -1;
+	struct addrinfo hints;
+	struct addrinfo *result, *rp;
+	int s;
 
-	sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family   = AF_INET;                 /* Return IPv4 only */
+	hints.ai_socktype = SOCK_STREAM;             /* We want a TCP socket */
+	hints.ai_flags    = AI_PASSIVE | AI_ADDRCONFIG; /* For wildcard IP address */
+	hints.ai_protocol = IPPROTO_TCP;
+
+	result = NULL;
+
+	s = getaddrinfo(host, port, &hints, &result);
+	if (s != 0) {
+		printf("getaddrinfo: %s\n", gai_strerror(s));
+		return NULL;
+	}
+
+	if (result == NULL) {
+		printf("Could not getaddrinfo\n");
+		return NULL;
+	}
+
+	rp = result;
+
+	for (/*rp = result*/; rp != NULL; rp = rp->ai_next) {
+		sockfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		if (sockfd == -1) {
+			continue;
+		}
+
+		int opt = 1;
+		setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
+#ifdef SO_NOSIGPIPE
+		setsockopt(sockfd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
+#endif
+		setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+		if (setnonblocking(sockfd) == -1)
+			perror("setnonblocking");
+
+		int r = connect(sockfd, rp->ai_addr, rp->ai_addrlen);
+		if (r == -1 && errno != EINPROGRESS) {
+			perror("connect_to_local");
+		}
+		break;
+	}
+
+	freeaddrinfo(result);
+
 	if (sockfd == -1) {
 		perror("socket");
 		return NULL;
 	}
 
-	int opt = 1;
-	setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
-#ifdef SO_NOSIGPIPE
-	setsockopt(sockfd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
-#endif
-	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-	if (setnonblocking(sockfd) == -1)
-		perror("setnonblocking");
-
-	local_t *local = new_local(sockfd);
-	int r = connect(sockfd, res->ai_addr, res->ai_addrlen);
-	if (r == -1 && errno != EINPROGRESS) {
-		perror("connect_to_local");
-		close_and_free_local(EV_A_ local);
-		return NULL;
-	}
+	local = new_local(sockfd);
 
 	return local;
 }
@@ -473,10 +513,23 @@ static rawkcp_t *connect_to_rawkcp(EV_P_ unsigned char *remote_id)
 
 static void rawkcp_send_handshake(EV_P_ rawkcp_t *rkcp)
 {
-	rkcp->buf->len = 4 + 4 + 2;
-	set_byte4(rkcp->buf->data, htonl(KTUN_P_MAGIC));
-	set_byte4(rkcp->buf->data + 4, htonl((192<<24)|(168<<16)|(16<<8)|(1<<0)));
-	set_byte2(rkcp->buf->data + 4 + 4, htons(80));
+	int n = 0;
+	rkcp->buf->len = 0;
+	set_byte4(rkcp->buf->data + rkcp->buf->len, htonl(KTUN_P_MAGIC));
+	rkcp->buf->len += 4;
+
+	//set HS_TARGET_HOST
+	n = sprintf((char *)rkcp->buf->data + rkcp->buf->len + 4, "%s", target_host);
+	set_byte2(rkcp->buf->data + rkcp->buf->len, htons(HS_TARGET_HOST));
+	set_byte2(rkcp->buf->data + rkcp->buf->len + 2, htons(n + 4));
+	rkcp->buf->len += (((n + 4 + 3)>>2)<<2); //4 bytes align
+
+	//set HS_TARGET_PORT
+	n = sprintf((char *)rkcp->buf->data + rkcp->buf->len + 4, "%s", target_port);
+	set_byte2(rkcp->buf->data + rkcp->buf->len, htons(HS_TARGET_PORT));
+	set_byte2(rkcp->buf->data + rkcp->buf->len + 2, htons(n + 4));
+	rkcp->buf->len += (((n + 4 + 3)>>2)<<2); //4 bytes align
+
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {
 		perror("ikcp_send");
@@ -744,12 +797,14 @@ void usage()
 	printf("ltun %s\n\n", "1.0");
 	printf("  Q2hlbiBNaW5xaWFuZyA8cHRwdDUyQGdtYWlsLmNvbT4=\n\n");
 	printf("  usage:\n\n");
-	printf("       [-s <server_host>]         Local IP address to bind\n");
-	printf("       [-l <local_port>]          Port number of your local server.\n");
+	printf("       [-s <local_host>]          Local IP address to bind\n");
+	printf("       [-p <local_port>]          Local Port to bind\n");
+	printf("       [-m <local_mac>]           Local Mac address\n");
+	printf("       [-S <target_host>]         Target IP address to connect\n");
+	printf("       [-P <target_port>]         Target Port to connect\n");
+	printf("       [-M <target_mac>]          Target Mac address\n");
 	printf("       [-t <timeout>]             Socket timeout in seconds.\n");
 	printf("       [-k <ktun>]                Ktun server\n");
-	printf("       [-m <mac>]                 Local Mac address\n");
-	printf("       [-n <mac>]                 Target Mac address\n");
 	printf("       [-v]                       Verbose mode.\n");
 	printf("       [-h, --help]               Print this message.\n");
 	printf("\n");
@@ -761,35 +816,34 @@ int main(int argc, char **argv)
 	int fd;
 	int c;
 	char *timeout   = NULL;
-	char *server_port = "1080";
-
-	int server_num = 0;
-	const char *server_host[MAX_REMOTE_NUM];
-	char *ktun = NULL;
 
 	opterr = 0;
 
-	while ((c = getopt_long(argc, argv, "s:l:t:m:n:k:hv", NULL, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "s:p:m:S:P:M:t:k:hv", NULL, NULL)) != -1) {
 		switch (c) {
 			case 's':
-				if (server_num < MAX_REMOTE_NUM) {
-					server_host[server_num++] = optarg;
-				}
+				local_host = optarg;
 				break;
-			case 'l':
-				server_port = optarg;
+			case 'p':
+				local_port = optarg;
+				break;
+			case 'm':
+				parse_optarg_mac(local_mac, optarg);
+				break;
+			case 'S':
+				target_host = optarg;
+				break;
+			case 'P':
+				target_port = optarg;
+				break;
+			case 'M':
+				parse_optarg_mac(target_mac, optarg);
 				break;
 			case 't':
 				timeout = optarg;
 				break;
 			case 'v':
 				verbose = 1;
-				break;
-			case 'm':
-				parse_optarg_mac(m_mac, optarg);
-				break;
-			case 'n':
-				parse_optarg_mac(n_mac, optarg);
 				break;
 			case 'k':
 				ktun = optarg;
@@ -809,10 +863,6 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	if (server_num == 0) {
-		server_host[server_num++] = "0.0.0.0";
-	}
-
 	if (timeout == NULL) {
 		timeout = "60";
 	}
@@ -821,7 +871,7 @@ int main(int argc, char **argv)
 		ktun = "ec1ns.ptpt52.com";
 	}
 
-	if (m_mac[0] == 0 && m_mac[1] == 0 && m_mac[2] == 0 && m_mac[3] == 0 && m_mac[4] == 0 && m_mac[5] == 0) {
+	if (local_mac[0] == 0 && local_mac[1] == 0 && local_mac[2] == 0 && local_mac[3] == 0 && local_mac[4] == 0 && local_mac[5] == 0) {
 		usage();
 		exit(EXIT_FAILURE);
 	}
@@ -841,15 +891,15 @@ int main(int argc, char **argv)
 	struct ev_loop *loop = EV_DEFAULT;
 
 	// initialize listen context
-	listen_ctx_t listen_ctx_list[server_num];
+	listen_ctx_t listen_ctx_local;
 
 	// bind to each interface
-	for (int i = 0; i < server_num; i++) {
-		const char *host = server_host[i];
+	do {
+		const char *host = local_host;
 
 		// Bind to port
 		int listenfd;
-		listenfd = create_and_bind(host, server_port);
+		listenfd = create_and_bind(host, local_port);
 		if (listenfd == -1) {
 			FATAL("bind() error");
 		}
@@ -857,7 +907,7 @@ int main(int argc, char **argv)
 			FATAL("listen() error");
 		}
 		setnonblocking(listenfd);
-		listen_ctx_t *listen_ctx = &listen_ctx_list[i];
+		listen_ctx_t *listen_ctx = &listen_ctx_local;
 
 		// Setup proxy context
 		listen_ctx->timeout = atoi(timeout);
@@ -867,8 +917,8 @@ int main(int argc, char **argv)
 		ev_io_init(&listen_ctx->io, accept_cb, listenfd, EV_READ);
 		ev_io_start(loop, &listen_ctx->io);
 
-		printf("tcp server listening at %s:%s\n", host ? host : "0.0.0.0", server_port);
-	}
+		printf("tcp server listening at %s:%s\n", host, local_port);
+	} while(0);
 
 	__rawkcp_init();
 	endpoint_peer_init();
@@ -885,8 +935,8 @@ int main(int argc, char **argv)
 		FATAL("endpoint_new error");
 	}
 
-	memcpy(endpoint->id, m_mac, 6);
-	printf("m_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", m_mac[0], m_mac[1], m_mac[2], m_mac[3], m_mac[4], m_mac[5]);
+	memcpy(endpoint->id, local_mac, 6);
+	printf("local_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", local_mac[0], local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5]);
 
 	if (endpoint_getaddrinfo(ktun, "910", &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
 		FATAL("endpoint_getaddrinfo error");
@@ -913,11 +963,11 @@ int main(int argc, char **argv)
 	}
 
 	// Clean up
-	for (int i = 0; i < server_num; i++) {
-		listen_ctx_t *listen_ctx = &listen_ctx_list[i];
+	do {
+		listen_ctx_t *listen_ctx = &listen_ctx_local;
 		ev_io_stop(loop, &listen_ctx->io);
 		close(listen_ctx->fd);
-	}
+	} while(0);
 
 	return 0;
 }

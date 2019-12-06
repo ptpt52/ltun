@@ -9,6 +9,9 @@
 #include "endpoint.h"
 #include "rawkcp.h"
 
+#define HS_TARGET_HOST 0x0001
+#define HS_TARGET_PORT 0x0002
+
 typedef struct listen_ctx_t {
 	ev_io io;
 	int fd;
@@ -86,7 +89,7 @@ static inline int setnonblocking(int fd)
 	return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-extern local_t *connect_to_local(EV_P_ struct addrinfo *res);
+extern local_t *connect_to_local(EV_P_ const char *host, const char *port);
 
 extern void close_and_free_server(EV_P_ server_t *server);
 extern void close_and_free_local(EV_P_ local_t *local);

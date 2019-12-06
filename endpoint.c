@@ -320,12 +320,11 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			if (rkcp->recv_stage == STAGE_PAUSE) {
 				return;
 			}
-			int len = ikcp_recv(rkcp->kcp, (char *)server->buf->data, BUF_SIZE);
+			int len = ikcp_recv(rkcp->kcp, (char *)server->buf->data + server->buf->len, BUF_SIZE - server->buf->len);
 			if (len < 0) {
 				return;
 			}
-			server->buf->idx = 0;
-			server->buf->len = len;
+			server->buf->len += len;
 
 			// has data to send
 			ssize_t s = send(server->fd, server->buf->data + server->buf->idx, server->buf->len, 0);
@@ -356,12 +355,11 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			if (rkcp->recv_stage == STAGE_PAUSE) {
 				return;
 			}
-			int len = ikcp_recv(rkcp->kcp, (char *)local->buf->data, BUF_SIZE);
+			int len = ikcp_recv(rkcp->kcp, (char *)local->buf->data + local->buf->len, BUF_SIZE - local->buf->len);
 			if (len < 0) {
 				return;
 			}
-			local->buf->idx = 0;
-			local->buf->len = len;
+			local->buf->len += len;
 
 			// has data to send
 			ssize_t s = send(local->fd, local->buf->data + local->buf->idx, local->buf->len, 0);
@@ -389,25 +387,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 		//new rkcp
 		do {
-			struct sockaddr_in *paddr;
-			struct addrinfo info;
-			struct sockaddr_storage storage;
-
-			memset(&info, 0, sizeof(struct addrinfo));
-			memset(&storage, 0, sizeof(struct sockaddr_storage));
-
-			paddr = (struct sockaddr_in *)&storage;
-			info.ai_family   = AF_INET;
-			info.ai_socktype = SOCK_STREAM;
-			info.ai_protocol = IPPROTO_TCP;
-			info.ai_addrlen  = sizeof(struct sockaddr_in);
-			info.ai_addr     = (struct sockaddr *)&storage;
-
-			if (rkcp->buf == NULL) {
-				rkcp->buf = malloc(sizeof(buffer_t));
-				rkcp->buf->idx = 0;
-				rkcp->buf->len = 0;
-			}
 			if (rkcp->buf->len >= BUF_SIZE) {
 				return;
 			}
@@ -418,18 +397,40 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			}
 			rkcp->buf->len += len;
 
-			if (rkcp->buf->len >= 4 + 4 + 2 && get_byte4(rkcp->buf->data) == htonl(KTUN_P_MAGIC)) {
-				paddr->sin_family = AF_INET;
-				paddr->sin_addr.s_addr = get_byte4(rkcp->buf->data + 4);
-				paddr->sin_port = get_byte2(rkcp->buf->data + 4 + 4);
-				local_t *local = connect_to_local(EV_A_ & info);
-				if (local == NULL) {
-					printf("connect error\n");
-					return;
+			if (rkcp->buf->len >= 4 && get_byte4(rkcp->buf->data) == htonl(KTUN_P_MAGIC)) {
+				const char *host = NULL;
+				const char *port = NULL;
+				int n = 4;
+
+				if (rkcp->buf->len >= n + 4 && get_byte2(rkcp->buf->data + n) == htons(HS_TARGET_HOST)) {
+					int len = ntohs(get_byte2(rkcp->buf->data + n + 2));
+					if (rkcp->buf->len >= n + 4 + len) {
+						host = (char *)rkcp->buf->data + n + 4;
+						n += (((len + 4 + 3)>>2)<<2);
+					}
 				}
-				rkcp->local = local;
-				local->rkcp = rkcp;
-				//TODO send ack
+
+				if (!host)
+					return;
+
+				if (rkcp->buf->len >= n + 4 && get_byte2(rkcp->buf->data + n) == htons(HS_TARGET_PORT)) {
+					int len = ntohs(get_byte2(rkcp->buf->data + n + 2));
+					if (rkcp->buf->len >= n + 4 + len) {
+						port = (char *)rkcp->buf->data + n + 4;
+						n += (((len + 4 + 3)>>2)<<2);
+						rkcp->buf->idx += n; //eat the HS data
+					}
+				}
+
+				if (host && port) {
+					local_t *local = connect_to_local(EV_A_ host, port);
+					if (local == NULL) {
+						printf("connect error\n");
+						return;
+					}
+					rkcp->local = local;
+					local->rkcp = rkcp;
+				}
 			}
 		} while(0);
 	}
