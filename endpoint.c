@@ -359,33 +359,40 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			if (rkcp->recv_stage != STAGE_STREAM) {
 				return;
 			}
-			int len = ikcp_recv(rkcp->kcp, (char *)server->buf->data + server->buf->len, BUF_SIZE - server->buf->len);
-			if (len < 0) {
-				return;
-			}
-			server->buf->len += len;
 
-			// has data to send
-			ssize_t s = send(server->fd, server->buf->data + server->buf->idx, server->buf->len, 0);
-			if (s == -1) {
-				if (errno != EAGAIN && errno != EWOULDBLOCK) {
-					perror("server_send_send");
-					close_and_free_rawkcp(EV_A_ rkcp);
-					close_and_free_server(EV_A_ server);
+			do {
+				int len = ikcp_recv(rkcp->kcp, (char *)server->buf->data + server->buf->len, BUF_SIZE - server->buf->len);
+				if (len < 0) {
+					return;
 				}
-				return;
-			} else if (s < server->buf->len) {
-				// partly sent, move memory, wait for the next time to send
-				server->buf->len -= s;
-				server->buf->idx += s;
-				rkcp->recv_stage = STAGE_PAUSE; //pause stream
-				ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
-				return;
-			} else {
-				// all sent out, wait for reading
-				server->buf->len = 0;
-				server->buf->idx = 0;
-			}
+				server->buf->len += len;
+				//printf("server get%u[%s]\n", server->buf->len, server->buf->data + server->buf->idx);
+
+				// has data to send
+				ssize_t s = send(server->fd, server->buf->data + server->buf->idx, server->buf->len, 0);
+				if (s == -1) {
+					if (errno != EAGAIN && errno != EWOULDBLOCK) {
+						perror("server_send_send");
+						close_and_free_rawkcp(EV_A_ rkcp);
+						close_and_free_server(EV_A_ server);
+					} else {
+						rkcp->recv_stage = STAGE_PAUSE; //pause stream
+						ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
+					}
+					return;
+				} else if (s < server->buf->len) {
+					// partly sent, move memory, wait for the next time to send
+					server->buf->len -= s;
+					server->buf->idx += s;
+					rkcp->recv_stage = STAGE_PAUSE; //pause stream
+					ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
+					return;
+				} else {
+					// all sent out, wait for reading
+					server->buf->len = 0;
+					server->buf->idx = 0;
+				}
+			} while (1);
 
 			return;
 		}
@@ -394,33 +401,41 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			if (rkcp->recv_stage == STAGE_PAUSE) {
 				return;
 			}
-			int len = ikcp_recv(rkcp->kcp, (char *)local->buf->data + local->buf->len, BUF_SIZE - local->buf->len);
-			if (len < 0) {
-				return;
-			}
-			local->buf->len += len;
 
-			// has data to send
-			ssize_t s = send(local->fd, local->buf->data + local->buf->idx, local->buf->len, 0);
-			if (s == -1) {
-				if (errno != EAGAIN && errno != EWOULDBLOCK) {
-					perror("local_send_send");
-					close_and_free_rawkcp(EV_A_ rkcp);
-					close_and_free_local(EV_A_ local);
+			do {
+				int len = ikcp_recv(rkcp->kcp, (char *)local->buf->data + local->buf->len, BUF_SIZE - local->buf->len);
+				if (len < 0) {
+					return;
 				}
-				return;
-			} else if (s < local->buf->len) {
-				// partly sent, move memory, wait for the next time to send
-				local->buf->len -= s;
-				local->buf->idx += s;
-				rkcp->recv_stage = STAGE_PAUSE; //pause stream
-				ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
-				return;
-			} else {
-				// all sent out, wait for reading
-				local->buf->len = 0;
-				local->buf->idx = 0;
-			}
+				local->buf->len += len;
+				//printf("local get%u[%s]\n", local->buf->len, local->buf->data + local->buf->idx);
+
+				// has data to send
+				ssize_t s = send(local->fd, local->buf->data + local->buf->idx, local->buf->len, 0);
+				if (s == -1) {
+					if (errno != EAGAIN && errno != EWOULDBLOCK) {
+						perror("local_send_send");
+						close_and_free_rawkcp(EV_A_ rkcp);
+						close_and_free_local(EV_A_ local);
+					} else {
+						rkcp->recv_stage = STAGE_PAUSE; //pause stream
+						ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
+					}
+					return;
+				} else if (s < local->buf->len) {
+					// partly sent, move memory, wait for the next time to send
+					local->buf->len -= s;
+					local->buf->idx += s;
+					rkcp->recv_stage = STAGE_PAUSE; //pause stream
+					ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
+					return;
+				} else {
+					// all sent out, wait for reading
+					local->buf->len = 0;
+					local->buf->idx = 0;
+				}
+			} while (1);
+
 			return;
 		}
 
