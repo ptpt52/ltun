@@ -89,10 +89,12 @@ int rawkcp_attach_endpoint(EV_P_ rawkcp_t *rkcp, endpoint_t *endpoint)
 		if (ret != 0) {
 			return ret;
 		}
+		//printf("rawkcp_attach_endpoint found peer\n");
 		rawkcp_send_handshake(EV_A_ rkcp);
-	} else {
-		rkcp->handshake = rawkcp_send_handshake;
+		return 0;
 	}
+
+	rkcp->handshake = rawkcp_send_handshake;
 	return endpoint_attach_rawkcp(EV_A_ endpoint, rkcp);
 }
 
