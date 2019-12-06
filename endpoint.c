@@ -485,6 +485,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					}
 					local->rkcp = rkcp;
 					rkcp->local = local;
+					ev_timer_start(EV_A_ & local->watcher);
 
 					//eat the data
 					if (rkcp->buf->idx != rkcp->buf->len) {
