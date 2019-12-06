@@ -256,6 +256,8 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		return;
 	}
 
+	ev_timer_again(EV_A_ & local->watcher);
+
 	if (rkcp->send_stage != STAGE_STREAM) {
 		ev_io_stop(EV_A_ & local_recv_ctx->io);
 		return;
@@ -276,10 +278,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 			return;
 		}
 	}
-
 	rkcp->buf->len = r;
-
-	ev_timer_again(EV_A_ & local->watcher);
 
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {
@@ -287,6 +286,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		close_and_free_local(EV_A_ local);
 		close_and_free_rawkcp(EV_A_ rkcp);
 	}
+
 	return;
 }
 
@@ -531,6 +531,7 @@ static void rawkcp_send_handshake(EV_P_ rawkcp_t *rkcp)
 	rkcp->buf->len += (((n + 4 + 3)>>2)<<2); //4 bytes align
 
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
+	rkcp->buf->len = 0; //clear after use
 	if (s < 0) {
 		perror("ikcp_send");
 	}
@@ -553,6 +554,8 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 		return;
 	}
 
+	ev_timer_again(EV_A_ & server->watcher);
+
 	ssize_t r = recv(server->fd, rkcp->buf->data, BUF_SIZE, 0);
 	if (r == 0) {
 		// connection closed
@@ -574,10 +577,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 			return;
 		}
 	}
-	tx += r;
 	rkcp->buf->len = r;
-
-	ev_timer_again(EV_A_ & server->watcher);
 
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {

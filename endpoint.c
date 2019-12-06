@@ -325,7 +325,29 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 		if (rkcp->server) {
 			server_t *server = rkcp->server;
-			if (rkcp->recv_stage == STAGE_PAUSE) {
+			if (rkcp->recv_stage == STAGE_INIT) {
+				int len = ikcp_recv(rkcp->kcp, (char *)server->buf->data + server->buf->len, BUF_SIZE - server->buf->len);
+				if (len < 0) {
+					return;
+				}
+				server->buf->len += len;
+				if (server->buf->len >= 4) {
+					if (get_byte4(server->buf->data) == htonl(KTUN_P_MAGIC)) {
+						rkcp->recv_stage = STAGE_STREAM;
+						server->buf->idx += 4;
+						server->buf->len -= 4;
+					} else {
+						close_and_free_rawkcp(EV_A_ rkcp);
+						close_and_free_server(EV_A_ server);
+						//unexpected
+						return;
+					}
+				} else {
+					//wait for more data
+					return;
+				}
+			}
+			if (rkcp->recv_stage != STAGE_STREAM) {
 				return;
 			}
 			int len = ikcp_recv(rkcp->kcp, (char *)server->buf->data + server->buf->len, BUF_SIZE - server->buf->len);
@@ -439,6 +461,33 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					}
 					local->rkcp = rkcp;
 					rkcp->local = local;
+
+					//eat the data
+					if (rkcp->buf->idx != rkcp->buf->len) {
+						rkcp->recv_stage = STAGE_PAUSE; //pause stream
+						memcpy(local->buf->data + local->buf->idx, rkcp->buf->data + rkcp->buf->idx, rkcp->buf->len - rkcp->buf->idx);
+						local->buf->len += len;
+						rkcp->buf->idx = 0;
+						rkcp->buf->len = 0;
+						ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
+					}
+
+					//handshake send reply
+					do {
+						rkcp->buf->len = 0;
+						set_byte4(rkcp->buf->data + rkcp->buf->len, htonl(KTUN_P_MAGIC));
+						rkcp->buf->len += 4;
+
+						int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
+						rkcp->buf->len = 0; //clear after use
+						if (s < 0) {
+							perror("ikcp_send");
+						}
+					} while (0);
+
+					//now ready to send
+					rkcp->send_stage = STAGE_STREAM;
+					ev_io_start(EV_A_ & local->recv_ctx->io);
 				}
 			}
 		} while(0);
