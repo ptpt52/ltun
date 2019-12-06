@@ -296,18 +296,19 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 		pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
 		if (pipe == NULL) {
+			printf("endpoint_peer_pipe_lookup no pipe conv=%u\n", conv);
 			return;
 		}
 		rkcp = rawkcp_lookup(conv, pipe->peer->id);
 		//TODO create rkcp
 
 		if (rkcp == NULL) {
-			//TODO in-comming connection
 			rkcp = new_rawkcp(conv, pipe->peer->id);
 			if (rkcp == NULL) {
 				return;
 			}
 			rkcp->peer = pipe->peer;
+			ev_timer_start(EV_A_ & rkcp->watcher);
 		}
 
 		int ret = ikcp_input(rkcp->kcp, (const char *)endpoint_recv_ctx->buf->data, endpoint_recv_ctx->buf->len);
@@ -404,9 +405,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				if (rkcp->buf->len >= n + 4 && get_byte2(rkcp->buf->data + n) == htons(HS_TARGET_HOST)) {
 					int len = ntohs(get_byte2(rkcp->buf->data + n + 2));
-					if (rkcp->buf->len >= n + 4 + len) {
+					if (len >= 4 && rkcp->buf->len >= n + len) {
 						host = (char *)rkcp->buf->data + n + 4;
-						n += (((len + 4 + 3)>>2)<<2);
+						n += (((len + 3)>>2)<<2);
 					}
 				}
 
@@ -415,14 +416,15 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				if (rkcp->buf->len >= n + 4 && get_byte2(rkcp->buf->data + n) == htons(HS_TARGET_PORT)) {
 					int len = ntohs(get_byte2(rkcp->buf->data + n + 2));
-					if (rkcp->buf->len >= n + 4 + len) {
+					if (len >= 4 && rkcp->buf->len >= n + len) {
 						port = (char *)rkcp->buf->data + n + 4;
-						n += (((len + 4 + 3)>>2)<<2);
+						n += (((len + 3)>>2)<<2);
 						rkcp->buf->idx += n; //eat the HS data
 					}
 				}
 
 				if (host && port) {
+					printf("do handshake conv=%u, new host=%s port=%s\n", conv, host, port);
 					local_t *local = connect_to_local(EV_A_ host, port);
 					if (local == NULL) {
 						printf("connect error\n");
@@ -837,8 +839,8 @@ pipe_t *endpoint_peer_pipe_select(peer_t *peer)
 int peer_attach_pipe(peer_t *peer, pipe_t *pipe)
 {
 	if (peer->pipe_count + 1 < PEER_MAX_PIPE) {
-		peer->pipe_count++;
 		peer->pipe[peer->pipe_count] = pipe;
+		peer->pipe_count++;
 		return 0;
 	}
 
@@ -852,7 +854,7 @@ pipe_t *endpoint_peer_pipe_lookup(__be32 addr, __be16 port)
 	pipe_t *pos;
 	struct hlist_head *head;
 	
-	hash = jhash_2words(addr, port, peer_rnd) % peer_pipe_hash_size;
+	hash = jhash_2words(addr, port, peer_pipe_rnd) % peer_pipe_hash_size;
 	head = &peer_pipe_hash[hash];
 
 	hlist_for_each_entry(pos, head, hnode) {
