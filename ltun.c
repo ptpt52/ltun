@@ -89,8 +89,6 @@ int rawkcp_attach_endpoint(EV_P_ rawkcp_t *rkcp, endpoint_t *endpoint)
 		if (ret != 0) {
 			return ret;
 		}
-
-		printf("endpoint_peer_lookup found\n");
 	}
 
 	return endpoint_attach_rawkcp(EV_A_ endpoint, rkcp);

@@ -336,6 +336,14 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						rkcp->recv_stage = STAGE_STREAM;
 						server->buf->idx += 4;
 						server->buf->len -= 4;
+						if (server->buf->len > 0) {
+							rkcp->recv_stage = STAGE_PAUSE;
+							ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
+						} else {
+							server->buf->idx = 0; //clear
+						}
+						rkcp->send_stage = STAGE_STREAM;
+						ev_io_start(EV_A_ & server->recv_ctx->io);
 					} else {
 						close_and_free_rawkcp(EV_A_ rkcp);
 						close_and_free_server(EV_A_ server);
