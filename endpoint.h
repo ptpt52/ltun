@@ -92,6 +92,7 @@ typedef struct endpoint_buffer_t {
 	struct list_head list;
 	endpoint_t *endpoint;
 	void (*recycle)(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb);
+	unsigned char dmac[6];
 	int repeat;
 	int interval;
 	__be32 addr;

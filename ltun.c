@@ -82,15 +82,17 @@ int rawkcp_attach_endpoint(EV_P_ rawkcp_t *rkcp, endpoint_t *endpoint)
 
 	peer = endpoint_peer_lookup(rkcp->remote_id);
 
-	if (peer != NULL ) {
+	if (peer != NULL) {
 		rkcp->peer = peer;
 		rkcp->endpoint = endpoint;
 		ret = rawkcp_insert(rkcp);
 		if (ret != 0) {
 			return ret;
 		}
+		rawkcp_send_handshake(EV_A_ rkcp);
+	} else {
+		rkcp->handshake = rawkcp_send_handshake;
 	}
-
 	return endpoint_attach_rawkcp(EV_A_ endpoint, rkcp);
 }
 
@@ -504,7 +506,6 @@ static rawkcp_t *connect_to_rawkcp(EV_P_ unsigned char *remote_id)
 		close_and_free_rawkcp(EV_A_ rkcp);
 		return NULL;
 	}
-	rkcp->handshake = rawkcp_send_handshake;
 
 	return rkcp;
 }
@@ -755,10 +756,6 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 		} else {
 			server->rkcp = rkcp;
 			rkcp->server = server;
-			//TODO
-			if (rkcp->peer && rkcp->handshake) {
-				rkcp->handshake(EV_A_ rkcp);
-			}
 			ev_timer_start(EV_A_ & rkcp->watcher);
 		}
 	}

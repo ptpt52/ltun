@@ -47,6 +47,12 @@
 void default_eb_recycle(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb)
 {
 	if (eb->repeat > 0) {
+		peer_t *peer = endpoint_peer_lookup(eb->dmac);
+		if (peer) {
+			printf("default_eb_recycle found peer\n");
+			free(eb);
+			return;
+		}
 		eb->repeat--;
 		eb->buf.idx = 0;
 		eb->buf.len = eb->buf_len;
@@ -94,7 +100,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 	endpoint_recv_ctx->buf->len = r;
 
 	if (endpoint_recv_ctx->buf->len >= 8 && get_byte4(endpoint_recv_ctx->buf->data) == htonl(KTUN_P_MAGIC)) {
-		printf("ktun: recv msg: code=0x%08x from=%u.%u.%u.%u:%u\n", ntohl(get_byte4(endpoint_recv_ctx->buf->data + 4)), NIPV4_ARG(addr.sin_addr.s_addr), htons(addr.sin_port));
+		//printf("ktun: recv msg: code=0x%08x from=%u.%u.%u.%u:%u\n", ntohl(get_byte4(endpoint_recv_ctx->buf->data + 4)), NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 		if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10020001)) {
 			//0x10020001: resp=1, ret=002, code=0001 listen ok:   smac, ip, port
 			unsigned char smac[6];
@@ -105,9 +111,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			ip   = get_byte4(endpoint_recv_ctx->buf->data + 4 + 4 + 6);
 			port = get_byte2(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 4);
 
-			printf("listen ok: smac=%02X:%02X:%02X:%02X:%02X:%02X ip=%u.%u.%u.%u port=%u\n",
-					smac[0], smac[1], smac[2], smac[3], smac[4], smac[5], NIPV4_ARG(ip), ntohs(port));
-
+			printf("listen ok: smac=%02X:%02X:%02X:%02X:%02X:%02X ip=%u.%u.%u.%u port=%u\n", smac[0], smac[1], smac[2], smac[3], smac[4], smac[5], NIPV4_ARG(ip), ntohs(port));
 		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10020002)) {
 			//0x10020002: resp=1, ret=002, code=0002 connect ready but not found: smac, dmac, sip, sport, 0, 0
 			unsigned char smac[6], dmac[6];
@@ -190,8 +194,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				peer = endpoint_peer_lookup(smac);
 				if (peer == NULL) {
-					printf("no peer found\n");
-					//TODO
 					peer = malloc(sizeof(peer_t));
 					memset(peer, 0, sizeof(peer_t));
 					INIT_HLIST_NODE(&peer->hnode);
@@ -200,7 +202,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 					printf("in-come new peer(%02X:%02X:%02X:%02X:%02X:%02X) connected from @%u.%u.%u.%u:%u\n",
 							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
-							NIPV4_ARG(addr.sin_addr.s_addr), htons(addr.sin_port));
+							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 					ret = endpoint_peer_insert(peer);
 					if (ret != 0) {
 						free(peer);
@@ -224,7 +226,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 					printf("in-come peer(%02X:%02X:%02X:%02X:%02X:%02X) connected from new pipe@%u.%u.%u.%u:%u\n",
 							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
-							NIPV4_ARG(pipe->addr), htons(pipe->port));
+							NIPV4_ARG(pipe->addr), ntohs(pipe->port));
 					ret = endpoint_peer_pipe_insert(pipe);
 					if (ret != 0) {
 						free(pipe);
@@ -242,10 +244,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 							close_and_free_rawkcp(EV_A_ pos);
 							break;
 						}
-						//TODO callback rawkcp
 						if (pos->server && pos->handshake) {
 							pos->handshake(EV_A_ pos);
-							printf("callback rawkcp: start remote->handshake\n");
+							printf("callback rawkcp: start handshake\n");
 						}
 					}
 				}
@@ -292,7 +293,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 		conv = ikcp_getconv(endpoint_recv_ctx->buf->data);
 
-		printf("endpoint: recv msg: conv=%u from=%u.%u.%u.%u:%u\n", conv, NIPV4_ARG(addr.sin_addr.s_addr), htons(addr.sin_port));
+		//printf("endpoint: recv msg: conv=%u from=%u.%u.%u.%u:%u\n", conv, NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 
 		pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
 		if (pipe == NULL) {
@@ -556,8 +557,6 @@ static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 	endpoint_buffer_t *pos, *n;
 	endpoint_t *endpoint = (endpoint_t *)watcher;
 
-	endpoint->ticks++;
-
 	list_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
 		if (pos->interval > 0 && (endpoint->ticks % pos->interval) != 0) {
 			continue;
@@ -566,6 +565,8 @@ static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 		list_add_tail(&pos->list, &endpoint->send_ctx->buf_head);
 		need_send = 1;
 	}
+
+	endpoint->ticks++;
 
 	if (need_send) {
 		ev_io_start(EV_A_ & endpoint->send_ctx->io);
@@ -805,12 +806,11 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	eb = malloc(sizeof(endpoint_buffer_t));
 	memset(eb, 0, sizeof(endpoint_buffer_t));
 
+	memcpy(eb->dmac, id, 6);
 	eb->endpoint = endpoint;
 	eb->repeat = 30;
 	eb->addr = endpoint->ktun_addr;
 	eb->port = endpoint->ktun_port;
-
-	printf("endpoint_connect_peer() send to ktun=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
 
 	eb->buf.idx = 0;
 	eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
