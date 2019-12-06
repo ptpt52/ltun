@@ -258,12 +258,14 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 	if (r == 0) {
 		// connection closed
 		close_and_free_local(EV_A_ local);
+		close_and_free_rawkcp(EV_A_ rkcp);
 		return;
 	} else if (r == -1) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
 			return;
 		} else {
 			close_and_free_local(EV_A_ local);
+			close_and_free_rawkcp(EV_A_ rkcp);
 			return;
 		}
 	}
@@ -276,6 +278,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 	if (s < 0) {
 		perror("local ikcp_send");
 		close_and_free_local(EV_A_ local);
+		close_and_free_rawkcp(EV_A_ rkcp);
 	}
 	return;
 }
@@ -295,6 +298,7 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 	if (local->buf->len == 0) {
 		// close and free
 		close_and_free_local(EV_A_ local);
+		close_and_free_rawkcp(EV_A_ rkcp);
 		return;
 	} else {
 		// has data to send
@@ -303,6 +307,7 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 			if (errno != EAGAIN && errno != EWOULDBLOCK) {
 				perror("local_send_send");
 				close_and_free_local(EV_A_ local);
+				close_and_free_rawkcp(EV_A_ rkcp);
 			}
 			return;
 		} else if (s < local->buf->len) {
@@ -323,12 +328,9 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 static void local_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 {
 	local_t *local = container_of(watcher, local_t, watcher);
+	rawkcp_t *rkcp = local->rkcp;
 
-	if (verbose) {
-		printf("TCP connection timeout\n");
-	}
-
-	//TODO
+	close_and_free_rawkcp(EV_A_ rkcp);
 	close_and_free_local(EV_A_ local);
 }
 
@@ -380,7 +382,7 @@ local_t *connect_to_local(EV_P_ struct addrinfo *res)
 	local_t *local = new_local(sockfd);
 	int r = connect(sockfd, res->ai_addr, res->ai_addrlen);
 	if (r == -1 && errno != EINPROGRESS) {
-		perror("connect");
+		perror("connect_to_local");
 		close_and_free_local(EV_A_ local);
 		return NULL;
 	}
@@ -477,8 +479,7 @@ static void rawkcp_send_handshake(EV_P_ rawkcp_t *rkcp)
 	set_byte2(rkcp->buf->data + 4 + 4, htons(80));
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {
-		perror("server_recv_send");
-		//TODO
+		perror("ikcp_send");
 	}
 
 	ev_timer_start(EV_A_ & rkcp->watcher);
@@ -507,7 +508,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 		if (verbose) {
 			printf("server_recv close the connection\n");
 		}
-		//TODO
+		close_and_free_rawkcp(EV_A_ rkcp);
 		close_and_free_server(EV_A_ server);
 		return;
 	} else if (r == -1) {
@@ -516,8 +517,8 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 			// continue to wait for recv
 			return;
 		} else {
-			//perror("server recv");
-			//TODO
+			perror("server_recv");
+			close_and_free_rawkcp(EV_A_ rkcp);
 			close_and_free_server(EV_A_ server);
 			return;
 		}
@@ -529,8 +530,8 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {
-		perror("server_recv_send");
-		//TODO
+		perror("server_recv ikcp_send");
+		close_and_free_rawkcp(EV_A_ rkcp);
 		close_and_free_server(EV_A_ server);
 	}
 	return;
@@ -553,7 +554,7 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 		if (verbose) {
 			printf("server_send close the connection\n");
 		}
-		//TODO
+		close_and_free_rawkcp(EV_A_ rkcp);
 		close_and_free_server(EV_A_ server);
 		return;
 	} else {
@@ -562,7 +563,7 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 		if (s == -1) {
 			if (errno != EAGAIN && errno != EWOULDBLOCK) {
 				perror("server_send_send");
-				//TODO
+				close_and_free_rawkcp(EV_A_ rkcp);
 				close_and_free_server(EV_A_ server);
 			}
 			return;
@@ -584,12 +585,9 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 {
 	server_t *server = container_of(watcher, server_t, watcher);
+	rawkcp_t *rkcp = server->rkcp;
 
-	if (verbose) {
-		printf("TCP connection timeout\n");
-	}
-
-	//TODO
+	close_and_free_rawkcp(EV_A_ rkcp);
 	close_and_free_server(EV_A_ server);
 }
 

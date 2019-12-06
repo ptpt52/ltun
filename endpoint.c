@@ -332,6 +332,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			if (s == -1) {
 				if (errno != EAGAIN && errno != EWOULDBLOCK) {
 					perror("server_send_send");
+					close_and_free_rawkcp(EV_A_ rkcp);
 					close_and_free_server(EV_A_ server);
 				}
 				return;
@@ -367,6 +368,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			if (s == -1) {
 				if (errno != EAGAIN && errno != EWOULDBLOCK) {
 					perror("local_send_send");
+					close_and_free_rawkcp(EV_A_ rkcp);
 					close_and_free_local(EV_A_ local);
 				}
 				return;
@@ -427,7 +429,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 				rkcp->local = local;
 				local->rkcp = rkcp;
-
 				//TODO send ack
 			}
 		} while(0);
