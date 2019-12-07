@@ -42,8 +42,6 @@
 #define EWOULDBLOCK EAGAIN
 #endif
 
-#define P2POOL_DEFAULT_PORT 9102
-
 void default_eb_recycle(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb)
 {
 	if (eb->repeat > 0) {
