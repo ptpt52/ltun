@@ -76,9 +76,7 @@ typedef struct peer_t {
 #define PEER_CLOSE -1
 	int stage;
 	unsigned char id[6];
-#define PEER_MAX_PIPE 32
-	int pipe_count;
-	struct pipe_t *pipe[PEER_MAX_PIPE];
+	struct pipe_t *pipe;
 } peer_t;
 
 typedef struct pipe_t {

@@ -909,19 +909,19 @@ int endpoint_peer_pipe_init(void)
 
 pipe_t *endpoint_peer_pipe_select(peer_t *peer)
 {
-	//TODO
-	return peer->pipe[0];
+	return peer->pipe;
 }
 
 int peer_attach_pipe(peer_t *peer, pipe_t *pipe)
 {
-	if (peer->pipe_count + 1 < PEER_MAX_PIPE) {
-		peer->pipe[peer->pipe_count] = pipe;
-		peer->pipe_count++;
-		return 0;
+	if (peer->pipe) {
+		peer->pipe->peer = NULL;
+		hlist_del(&peer->pipe->hnode);
+		free(peer->pipe);
+		peer->pipe = NULL;
 	}
-
-	return -1;
+	peer->pipe = pipe;
+	return 0;
 }
 
 pipe_t *endpoint_peer_pipe_lookup(__be32 addr, __be16 port)
