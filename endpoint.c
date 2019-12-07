@@ -197,7 +197,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					peer = malloc(sizeof(peer_t));
 					memset(peer, 0, sizeof(peer_t));
 					INIT_HLIST_NODE(&peer->hnode);
-					peer->stage = PEER_INIT;
 					memcpy(peer->id, smac, 6);
 
 					printf("in-come new peer(%02X:%02X:%02X:%02X:%02X:%02X) connected from @%u.%u.%u.%u:%u\n",

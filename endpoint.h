@@ -49,7 +49,6 @@ typedef struct endpoint_t {
 	ev_timer watcher;
 
 	int fd;
-	int stage;
 	int ticks;
 	unsigned char id[6];
 
@@ -64,17 +63,8 @@ typedef struct endpoint_t {
 	struct hlist_head rawkcp_head;
 } endpoint_t;
 
-#define ENDPOINT_INIT        0
-#define ENDPOINT_SYN_SENT    1
-#define ENDPOINT_ESTABLISHED 2
-#define ENDPOINT_CLOSED      3
-
 typedef struct peer_t {
 	struct hlist_node hnode;
-#define PEER_INIT 0
-#define PEER_CONNECTED 1
-#define PEER_CLOSE -1
-	int stage;
 	unsigned char id[6];
 	struct pipe_t *pipe;
 } peer_t;
