@@ -9,6 +9,10 @@
 #include "endpoint.h"
 #include "rawkcp.h"
 
+#ifndef SOL_TCP
+#define SOL_TCP IPPROTO_TCP
+#endif
+
 #define HS_TARGET_HOST 0x0001
 #define HS_TARGET_PORT 0x0002
 

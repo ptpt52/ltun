@@ -54,11 +54,11 @@ void default_eb_recycle(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb
 		eb->repeat--;
 		eb->buf.idx = 0;
 		eb->buf.len = eb->buf_len;
-		list_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
+		dlist_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
 	} else if (eb->repeat == -1) {
 		eb->buf.idx = 0;
 		eb->buf.len = eb->buf_len;
-		list_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
+		dlist_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
 	} else {
 		free(eb);
 	}
@@ -165,7 +165,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
 				set_byte6(eb->buf.data + 4 + 4 + 6, dmac); //dmac
 
-				list_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
+				dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
 				ev_io_start(EV_A_ & endpoint->send_ctx->io);
 			} while (0);
@@ -267,7 +267,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
 					set_byte6(eb->buf.data + 4 + 4 + 6, smac); //dmac
 
-					list_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
+					dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
 					ev_io_start(EV_A_ & endpoint->send_ctx->io);
 				}
@@ -521,7 +521,7 @@ static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 	endpoint_t *endpoint = endpoint_send_ctx->endpoint;
 	endpoint_buffer_t *pos, *n;
 
-	list_for_each_entry_safe(pos, n, &endpoint_send_ctx->buf_head, list) {
+	dlist_for_each_entry_safe(pos, n, &endpoint_send_ctx->buf_head, list) {
 		ssize_t s;
 		struct sockaddr_in addr;
 
@@ -550,13 +550,13 @@ static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 			//send out ok
 		}
 
-		list_del(&pos->list);
+		dlist_del(&pos->list);
 		endpoint_buffer_recycle(EV_A_ endpoint, pos);
 		if (++count == 16)
 			break;
 	}
 
-	if (list_empty(&endpoint_send_ctx->buf_head)) {
+	if (dlist_empty(&endpoint_send_ctx->buf_head)) {
 		//no buff to send
 		ev_io_stop(EV_A_ & endpoint_send_ctx->io);
 	}
@@ -568,12 +568,12 @@ static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 	endpoint_buffer_t *pos, *n;
 	endpoint_t *endpoint = (endpoint_t *)watcher;
 
-	list_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
+	dlist_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
 		if (pos->interval > 0 && (endpoint->ticks % pos->interval) != 0) {
 			continue;
 		}
-		list_del(&pos->list);
-		list_add_tail(&pos->list, &endpoint->send_ctx->buf_head);
+		dlist_del(&pos->list);
+		dlist_add_tail(&pos->list, &endpoint->send_ctx->buf_head);
 		need_send = 1;
 	}
 
@@ -700,7 +700,7 @@ endpoint_t *endpoint_new(int fd)
 {
 	endpoint_t *endpoint = malloc(sizeof(endpoint_t));
 	memset(endpoint, 0, sizeof(endpoint_t));
-	INIT_LIST_HEAD(&endpoint->watcher_send_buf_head);
+	INIT_DLIST_HEAD(&endpoint->watcher_send_buf_head);
 	INIT_HLIST_HEAD(&endpoint->rawkcp_head);
 
 	endpoint->recv_ctx = malloc(sizeof(endpoint_ctx_t));
@@ -708,14 +708,14 @@ endpoint_t *endpoint_new(int fd)
 	endpoint->recv_ctx->buf = malloc(sizeof(buffer_t));
 	endpoint->recv_ctx->buf->len = 0;
 	endpoint->recv_ctx->buf->idx = 0;
-	INIT_LIST_HEAD(&endpoint->recv_ctx->buf_head);
+	INIT_DLIST_HEAD(&endpoint->recv_ctx->buf_head);
 
 	endpoint->send_ctx = malloc(sizeof(endpoint_ctx_t));
 	memset(endpoint->send_ctx, 0, sizeof(endpoint_ctx_t));
 	endpoint->send_ctx->buf = malloc(sizeof(buffer_t));
 	endpoint->send_ctx->buf->len = 0;
 	endpoint->send_ctx->buf->idx = 0;
-	INIT_LIST_HEAD(&endpoint->send_ctx->buf_head);
+	INIT_DLIST_HEAD(&endpoint->send_ctx->buf_head);
 
 	endpoint->fd = fd;
 	endpoint->recv_ctx->endpoint = endpoint;
@@ -830,7 +830,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	set_byte6(eb->buf.data + 4 + 4 + 6, id); //dmac
 
 	eb->recycle = default_eb_recycle;
-	list_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
+	dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
 	ev_io_start(EV_A_ & endpoint->send_ctx->io);
 
@@ -859,7 +859,7 @@ void endpoint_ktun_start(endpoint_t *endpoint)
 	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
 
 	eb->recycle = default_eb_recycle;
-	list_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
+	dlist_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
 }
 
 

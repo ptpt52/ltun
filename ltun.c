@@ -23,7 +23,6 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
-#include <linux/netfilter_ipv4.h>
 #include "list.h"
 #include "endpoint.h"
 #include "rawkcp.h"

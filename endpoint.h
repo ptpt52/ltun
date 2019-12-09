@@ -42,7 +42,7 @@ typedef struct endpoint_ctx {
 	buffer_t *buf;
 
 	struct endpoint_t *endpoint;
-	struct list_head buf_head;
+	struct dlist_head buf_head;
 } endpoint_ctx_t;
 
 typedef struct endpoint_t {
@@ -57,7 +57,7 @@ typedef struct endpoint_t {
 
 	struct endpoint_ctx *recv_ctx;
 	struct endpoint_ctx *send_ctx;
-	struct list_head watcher_send_buf_head;
+	struct dlist_head watcher_send_buf_head;
 #define RAWKCP_MAX_PENDING 64
 	int rawkcp_count;
 	struct hlist_head rawkcp_head;
@@ -77,7 +77,7 @@ typedef struct pipe_t {
 } pipe_t;
 
 typedef struct endpoint_buffer_t {
-	struct list_head list;
+	struct dlist_head list;
 	endpoint_t *endpoint;
 	void (*recycle)(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb);
 	unsigned char dmac[6];
