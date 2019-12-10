@@ -284,7 +284,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			rawkcp_t *rkcp;
 			pipe_t *pipe;
 
-			conv = get_byte4(endpoint_recv_ctx->buf->data + 4);
+			conv = get_byte4(endpoint_recv_ctx->buf->data + 8);
 
 			pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
 			if (pipe == NULL) {
@@ -296,7 +296,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				return;
 			}
 
-			nbytes = get_byte4(endpoint_recv_ctx->buf->data + 8);
+			nbytes = get_byte4(endpoint_recv_ctx->buf->data + 12);
 			rkcp->expect_recv_bytes = ntohl(nbytes);
 
 			if (rkcp->server) {
