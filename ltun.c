@@ -296,10 +296,10 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 {
 	local_ctx_t *local_send_ctx = (local_ctx_t *)w;
 	local_t *local              = local_send_ctx->local;
-	rawkcp_t *rkcp            = local->rkcp;
+	rawkcp_t *rkcp              = local->rkcp;
 
 	if (rkcp == NULL) {
-		printf("invalid rkcp\n");
+		printf("invalid local\n");
 		close_and_free_local(EV_A_ local);
 		return;
 	}
@@ -618,8 +618,8 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {
 		perror("server_recv: ikcp_send");
-		close_and_free_rawkcp(EV_A_ rkcp);
 		close_and_free_server(EV_A_ server);
+		close_and_free_rawkcp(EV_A_ rkcp);
 	} else {
 		rkcp->send_bytes += rkcp->buf->len;
 	}
@@ -630,7 +630,7 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 {
 	server_ctx_t *server_send_ctx = (server_ctx_t *)w;
 	server_t *server              = server_send_ctx->server;
-	rawkcp_t *rkcp              = server->rkcp;
+	rawkcp_t *rkcp                = server->rkcp;
 
 	if (rkcp == NULL) {
 		printf("invalid server\n");

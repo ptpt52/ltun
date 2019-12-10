@@ -1020,7 +1020,6 @@ int peer_attach_pipe(peer_t *peer, pipe_t *pipe)
 
 pipe_t *endpoint_peer_pipe_lookup(__be32 addr, __be16 port)
 {
-	//TODO
 	unsigned int hash;
 	pipe_t *pos;
 	struct hlist_head *head;
