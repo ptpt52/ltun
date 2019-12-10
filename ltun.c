@@ -269,8 +269,9 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		// connection closed
 		printf("local_recv: close the connection\n");
 		//TODO we close local, not rkcp
+		rkcp->send_stage = STAGE_CLOSE;
 		close_and_free_local(EV_A_ local);
-		//close_and_free_rawkcp(EV_A_ rkcp);
+		close_and_free_rawkcp(EV_A_ rkcp);
 		return;
 	} else if (r == -1) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -284,13 +285,14 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 	}
 	rkcp->buf->len = r;
 
+	//TODO buffer full
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {
 		perror("local_recv: ikcp_send");
 		close_and_free_local(EV_A_ local);
 		close_and_free_rawkcp(EV_A_ rkcp);
 	}
-
+	rkcp->send_bytes += s;
 	return;
 }
 
@@ -435,17 +437,6 @@ local_t *connect_to_local(EV_P_ const char *host, const char *port)
 	return local;
 }
 
-static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
-{
-	rawkcp_t *rkcp = (rawkcp_t *)watcher;
-
-	if (rkcp->kcp) {
-		ikcp_update(rkcp->kcp, iclock());
-	}
-
-	ev_timer_again(EV_A_ & rkcp->watcher);
-}
-
 static void free_rawkcp(rawkcp_t *rkcp)
 {
 	hlist_del_init(&rkcp->hnode);
@@ -464,12 +455,38 @@ static void free_rawkcp(rawkcp_t *rkcp)
 	free(rkcp);
 }
 
+static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
+{
+	IUINT32 current = iclock();
+	rawkcp_t *rkcp = (rawkcp_t *)watcher;
+
+	if (rkcp->kcp) {
+		ikcp_update(rkcp->kcp, current);
+	}
+
+	if (rkcp->send_stage == STAGE_CLOSE) {
+		IUINT32 slap = itimediff(current, rkcp->close_ts);
+		if (slap >= 1000 * 10) {
+			ev_timer_stop(EV_A_ & rkcp->watcher);
+			free_rawkcp(rkcp);
+		}
+	} else {
+		ev_timer_again(EV_A_ & rkcp->watcher);
+	}
+}
+
 void close_and_free_rawkcp(EV_P_ rawkcp_t *rkcp)
 {
 	if (rkcp) {
-		//TODO: -send close to rkcp and free rawkcp in 5s
-		ev_timer_stop(EV_A_ & rkcp->watcher);
-		free_rawkcp(rkcp);
+		rkcp->close_ts = iclock();
+		if (rkcp->send_stage != STAGE_CLOSE) {
+			ev_timer_stop(EV_A_ & rkcp->watcher);
+			free_rawkcp(rkcp);
+		} else {
+			//send rkcp->send_bytes/recv_bytes
+			//send close
+			//the timer will handle destroy
+		}
 	}
 }
 
@@ -566,8 +583,9 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 		// connection closed
 		printf("server_recv: close the connection\n");
 		//TODO we close server, not rkcp
+		rkcp->send_stage = STAGE_CLOSE;
 		close_and_free_server(EV_A_ server);
-		//close_and_free_rawkcp(EV_A_ rkcp);
+		close_and_free_rawkcp(EV_A_ rkcp);
 		return;
 	} else if (r == -1) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -589,6 +607,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 		close_and_free_rawkcp(EV_A_ rkcp);
 		close_and_free_server(EV_A_ server);
 	}
+	rkcp->send_bytes += s;
 	return;
 }
 

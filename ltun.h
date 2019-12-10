@@ -62,6 +62,7 @@ typedef struct local_t {
 #define STAGE_INIT       0  /* Initial stage                    */
 #define STAGE_PAUSE      2  /* Pause data stream                */
 #define STAGE_STREAM     6  /* Stream between client and server */
+#define STAGE_CLOSE      7  /* Stream closed                    */
 
 #ifndef container_of
 #define container_of(ptr, type, member) ({                      \
@@ -88,6 +89,11 @@ static inline int setnonblocking(int fd)
 		flags = 0;
 	}
 	return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
+
+static inline long itimediff(IUINT32 later, IUINT32 earlier)
+{
+	return ((IINT32)(later - earlier));
 }
 
 extern local_t *connect_to_local(EV_P_ const char *host, const char *port);

@@ -327,11 +327,13 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					return;
 				}
 				server->buf->len += len;
+				rkcp->recv_bytes += len;
 				if (server->buf->len >= 4) {
 					if (get_byte4(server->buf->data) == htonl(KTUN_P_MAGIC)) {
 						rkcp->recv_stage = STAGE_STREAM;
 						server->buf->idx += 4;
 						server->buf->len -= 4;
+						rkcp->recv_bytes -= 4;
 						if (server->buf->len > 0) {
 							rkcp->recv_stage = STAGE_PAUSE;
 							ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
@@ -362,6 +364,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					return;
 				}
 				server->buf->len += len;
+				rkcp->recv_bytes += len;
 				//printf("server get%u[%s]\n", server->buf->len, server->buf->data + server->buf->idx);
 				if (++n_recv >= 8) {
 					rkcp->recv_stage = STAGE_PAUSE; //pause stream
@@ -410,6 +413,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					return;
 				}
 				local->buf->len += len;
+				rkcp->recv_bytes += len;
 				//printf("local get%u[%s]\n", local->buf->len, local->buf->data + local->buf->idx);
 				if (++n_recv >= 8) {
 					rkcp->recv_stage = STAGE_PAUSE; //pause stream
