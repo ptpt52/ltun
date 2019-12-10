@@ -477,6 +477,17 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 	}
 }
 
+static void rawkcp_send_close(EV_P_ rawkcp_t *rkcp)
+{
+	unsigned char buf[128];
+
+	set_byte4(buf, htonl(KTUN_P_MAGIC));
+	set_byte4(buf + 4, htonl(0x006b6370)); //magic 'kcp'
+	set_byte4(buf + 8, htonl(rkcp->conv));
+	set_byte4(buf + 12, htonl(rkcp->send_bytes));
+	rkcp->kcp->output((const char*)buf, 16, rkcp->kcp, rkcp->kcp->user);
+}
+
 void close_and_free_rawkcp(EV_P_ rawkcp_t *rkcp)
 {
 	if (rkcp) {
@@ -485,6 +496,7 @@ void close_and_free_rawkcp(EV_P_ rawkcp_t *rkcp)
 			ev_timer_stop(EV_A_ & rkcp->watcher);
 			free_rawkcp(rkcp);
 		} else {
+			rawkcp_send_close(EV_A_ rkcp);
 			//send rkcp->send_bytes/recv_bytes
 			//send close
 			//the timer will handle destroy
