@@ -237,19 +237,11 @@ static void free_local(local_t *local)
 void close_and_free_local(EV_P_ local_t *local)
 {
 	if (local != NULL) {
-		if (local->send_stage != STAGE_CLOSE) {
-			local->send_stage = STAGE_CLOSE;
-			ev_io_stop(EV_A_ & local->send_ctx->io);
-		}
-		if (local->recv_stage != STAGE_CLOSE) {
-			local->recv_stage = STAGE_CLOSE;
-			ev_io_stop(EV_A_ & local->recv_ctx->io);
-		}
-		if (local->send_stage == STAGE_CLOSE && local->recv_stage == STAGE_CLOSE) {
-			ev_timer_stop(EV_A_ & local->watcher);
-			close(local->fd);
-			free_local(local);
-		}
+		ev_io_stop(EV_A_ & local->send_ctx->io);
+		ev_io_stop(EV_A_ & local->recv_ctx->io);
+		ev_timer_stop(EV_A_ & local->watcher);
+		close(local->fd);
+		free_local(local);
 	}
 }
 
@@ -274,11 +266,8 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 	if (r == 0) {
 		// connection closed
 		printf("local_recv: close the connection\n");
-		//TODO we close local, not rkcp
-		rkcp->send_stage = STAGE_CLOSE;
-		ev_io_stop(EV_A_ & local_recv_ctx->io);
-		local->recv_stage = STAGE_CLOSE;
 		close_and_free_local(EV_A_ local);
+		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
 		close_and_free_rawkcp(EV_A_ rkcp);
 		return;
 	} else if (r == -1) {
@@ -287,6 +276,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		} else {
 			perror("local_recv: recv");
 			close_and_free_local(EV_A_ local);
+			rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
 			close_and_free_rawkcp(EV_A_ rkcp);
 			return;
 		}
@@ -294,7 +284,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 	rkcp->buf->len = r;
 	ev_timer_again(EV_A_ & local->watcher);
 
-	//TODO buffer full
+	//TODO rkcp full
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {
 		perror("local_recv: ikcp_send");
@@ -330,6 +320,7 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 			if (errno != EAGAIN && errno != EWOULDBLOCK) {
 				perror("local_send_send");
 				close_and_free_local(EV_A_ local);
+				rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
 				close_and_free_rawkcp(EV_A_ rkcp);
 			}
 			return;
@@ -344,7 +335,8 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 			local->buf->idx = 0;
 			ev_io_stop(EV_A_ & local_send_ctx->io);
 			if (rkcp->recv_stage == STAGE_CLOSE) {
-				shutdown(local->fd, SHUT_WR);
+				close_and_free_local(EV_A_ local);
+				close_and_free_rawkcp(EV_A_ rkcp);
 			} else {
 				rkcp->recv_stage = STAGE_STREAM;
 			}
@@ -504,15 +496,12 @@ static void rawkcp_send_close(EV_P_ rawkcp_t *rkcp)
 void close_and_free_rawkcp(EV_P_ rawkcp_t *rkcp)
 {
 	if (rkcp) {
-		rkcp->close_ts = iclock();
 		if (rkcp->send_stage != STAGE_CLOSE) {
 			ev_timer_stop(EV_A_ & rkcp->watcher);
 			free_rawkcp(rkcp);
 		} else {
+			rkcp->close_ts = iclock();
 			rawkcp_send_close(EV_A_ rkcp);
-			//send rkcp->send_bytes/recv_bytes
-			//send close
-			//the timer will handle destroy
 		}
 	}
 }
@@ -607,11 +596,8 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	if (r == 0) {
 		// connection closed
 		printf("server_recv: close the connection\n");
-		//TODO we close server, not rkcp
-		ev_io_stop(EV_A_ & server_recv_ctx->io);
-		rkcp->send_stage = STAGE_CLOSE;
-		server->recv_stage = STAGE_CLOSE;
 		close_and_free_server(EV_A_ server);
+		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
 		close_and_free_rawkcp(EV_A_ rkcp);
 		return;
 	} else if (r == -1) {
@@ -621,14 +607,16 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 			return;
 		} else {
 			perror("server_recv: recv");
-			close_and_free_rawkcp(EV_A_ rkcp);
 			close_and_free_server(EV_A_ server);
+			rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
+			close_and_free_rawkcp(EV_A_ rkcp);
 			return;
 		}
 	}
 	rkcp->buf->len = r;
 	ev_timer_again(EV_A_ & server->watcher);
 
+	//TODO rkcp full
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {
 		perror("server_recv: ikcp_send");
@@ -657,8 +645,8 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 		if (verbose) {
 			printf("server_send close the connection\n");
 		}
-		close_and_free_rawkcp(EV_A_ rkcp);
 		close_and_free_server(EV_A_ server);
+		close_and_free_rawkcp(EV_A_ rkcp);
 		return;
 	} else {
 		// has data to send
@@ -666,8 +654,9 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 		if (s == -1) {
 			if (errno != EAGAIN && errno != EWOULDBLOCK) {
 				perror("server_send_send");
-				close_and_free_rawkcp(EV_A_ rkcp);
 				close_and_free_server(EV_A_ server);
+				rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
+				close_and_free_rawkcp(EV_A_ rkcp);
 			}
 			return;
 		} else if (s < server->buf->len) {
@@ -681,7 +670,8 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 			server->buf->idx = 0;
 			ev_io_stop(EV_A_ & server_send_ctx->io);
 			if (rkcp->recv_stage == STAGE_CLOSE) {
-				shutdown(server->fd, SHUT_WR);
+				close_and_free_server(EV_A_ server);
+				close_and_free_rawkcp(EV_A_ rkcp);
 			} else {
 				rkcp->recv_stage = STAGE_STREAM;
 			}
@@ -750,19 +740,11 @@ static void free_server(server_t *server)
 void close_and_free_server(EV_P_ server_t *server)
 {
 	if (server != NULL) {
-		if (server->send_stage != STAGE_CLOSE) {
-			server->send_stage = STAGE_CLOSE;
-			ev_io_stop(EV_A_ & server->send_ctx->io);
-		}
-		if (server->recv_stage != STAGE_CLOSE) {
-			server->recv_stage = STAGE_CLOSE;
-			ev_io_stop(EV_A_ & server->recv_ctx->io);
-		}
-		if (server->send_stage == STAGE_CLOSE && server->recv_stage == STAGE_CLOSE) {
-			ev_timer_stop(EV_A_ & server->watcher);
-			close(server->fd);
-			free_server(server);
-		}
+		ev_io_stop(EV_A_ & server->send_ctx->io);
+		ev_io_stop(EV_A_ & server->recv_ctx->io);
+		ev_timer_stop(EV_A_ & server->watcher);
+		close(server->fd);
+		free_server(server);
 	}
 }
 
@@ -805,7 +787,7 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 	server_t *server = new_server(serverfd, listener);
 	ev_timer_start(EV_A_ & server->watcher);
 
-	if (server->send_stage == STAGE_INIT) {
+	if (server->stage == STAGE_INIT) {
 		unsigned char remote_id[6];
 		if (ltun_select_remote_id(remote_id) != 0) {
 			printf("not remote_id found\n");

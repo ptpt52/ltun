@@ -31,8 +31,7 @@ typedef struct server_ctx_t {
 typedef struct server_t {
 	ev_timer watcher;
 	int fd;
-	int send_stage;
-	int recv_stage;
+	int stage;
 
 	buffer_t *buf;
 
@@ -50,8 +49,7 @@ typedef struct local_ctx_t {
 typedef struct local_t {
 	ev_timer watcher;
 	int fd;
-	int send_stage;
-	int recv_stage;
+	int stage;
 
 	buffer_t *buf;
 
