@@ -264,7 +264,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		return;
 	}
 
-	ssize_t r = recv(local->fd, rkcp->buf->data, BUF_SIZE, 0);
+	ssize_t r = recv(local->fd, rkcp->buf->data, 1376, 0);
 	if (r == 0) {
 		// connection closed
 		printf("local_recv: close the connection\n");
@@ -487,9 +487,9 @@ rawkcp_t *new_rawkcp(unsigned int conv, const unsigned char *remote_id)
 
 	rkcp->kcp->output = rawkcp_output;
 	ikcp_wndsize(rkcp->kcp, 128, 128);
-	ikcp_nodelay(rkcp->kcp, 0, 10, 0, 0);
+	ikcp_nodelay(rkcp->kcp, 0, 20, 0, 0);
 
-	ev_timer_init(&rkcp->watcher, rawkcp_watcher_cb, 0.1, 0.1);
+	ev_timer_init(&rkcp->watcher, rawkcp_watcher_cb, 0.1, 0.02);
 
 	return rkcp;
 }
@@ -560,7 +560,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 
 	ev_timer_again(EV_A_ & server->watcher);
 
-	ssize_t r = recv(server->fd, rkcp->buf->data, BUF_SIZE, 0);
+	ssize_t r = recv(server->fd, rkcp->buf->data, 1376, 0);
 	if (r == 0) {
 		// connection closed
 		printf("server_recv: close the connection\n");
