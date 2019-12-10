@@ -291,8 +291,9 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		perror("local_recv: ikcp_send");
 		close_and_free_local(EV_A_ local);
 		close_and_free_rawkcp(EV_A_ rkcp);
+	} else {
+		rkcp->send_bytes += rkcp->buf->len;
 	}
-	rkcp->send_bytes += s;
 	return;
 }
 
@@ -469,6 +470,7 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 		if (slap >= 1000 * 10) {
 			ev_timer_stop(EV_A_ & rkcp->watcher);
 			free_rawkcp(rkcp);
+			//printf("rawkcp_watcher_cb close rkcp=%p tx=%u rx=%u\n", rkcp, rkcp->send_bytes, rkcp->recv_bytes);
 		}
 	} else {
 		ev_timer_again(EV_A_ & rkcp->watcher);
@@ -606,8 +608,9 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 		perror("server_recv: ikcp_send");
 		close_and_free_rawkcp(EV_A_ rkcp);
 		close_and_free_server(EV_A_ server);
+	} else {
+		rkcp->send_bytes += rkcp->buf->len;
 	}
-	rkcp->send_bytes += s;
 	return;
 }
 
