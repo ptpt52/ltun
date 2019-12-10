@@ -76,6 +76,8 @@ typedef struct local_t {
 #define MAX_REQUEST_TIMEOUT 30
 #define MAX_REMOTE_NUM 10
 
+extern int verbose;
+
 static inline void FATAL(const char *msg)
 {
 	fprintf(stderr, "%s", msg);

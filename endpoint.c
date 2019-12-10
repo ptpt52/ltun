@@ -98,7 +98,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 	endpoint_recv_ctx->buf->len = r;
 
 	if (endpoint_recv_ctx->buf->len >= 8 && get_byte4(endpoint_recv_ctx->buf->data) == htonl(KTUN_P_MAGIC)) {
-		//printf("ktun: recv msg: code=0x%08x from=%u.%u.%u.%u:%u\n", ntohl(get_byte4(endpoint_recv_ctx->buf->data + 4)), NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 		if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10020001)) {
 			//0x10020001: resp=1, ret=002, code=0001 listen ok:   smac, ip, port
 			unsigned char smac[6];
@@ -109,7 +108,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			ip   = get_byte4(endpoint_recv_ctx->buf->data + 4 + 4 + 6);
 			port = get_byte2(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 4);
 
-			printf("listen ok: smac=%02X:%02X:%02X:%02X:%02X:%02X ip=%u.%u.%u.%u port=%u\n", smac[0], smac[1], smac[2], smac[3], smac[4], smac[5], NIPV4_ARG(ip), ntohs(port));
+			if (verbose) {
+				printf("listen ok: smac=%02X:%02X:%02X:%02X:%02X:%02X ip=%u.%u.%u.%u port=%u\n",
+						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5], NIPV4_ARG(ip), ntohs(port));
+			}
 		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10020002)) {
 			//0x10020002: resp=1, ret=002, code=0002 connect ready but not found: smac, dmac, sip, sport, 0, 0
 			unsigned char smac[6], dmac[6];
@@ -121,11 +123,12 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			sip   = get_byte4(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 6);
 			sport = get_byte2(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 6 + 4);
 
-			printf("connect ready but not found: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X sip=%u.%u.%u.%u sport=%u\n",
-					smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
-					dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
-					NIPV4_ARG(sip), ntohs(sport));
-
+			if (verbose) {
+				printf("connect ready but not found: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X sip=%u.%u.%u.%u sport=%u\n",
+						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
+						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
+						NIPV4_ARG(sip), ntohs(sport));
+			}
 		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10030002)) {
 			//0x10030002: resp=1, ret=003, code=0002 connect ready and found:     smac, dmac, sip, sport, dip, dport
 			unsigned char smac[6], dmac[6];
@@ -139,12 +142,12 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			dip   = get_byte4(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 6 + 4 + 2);
 			dport = get_byte2(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 6 + 4 + 2 + 4);
 
-			printf("connect ready and found: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X sip=%u.%u.%u.%u sport=%u dip=%u.%u.%u.%u dport=%u\n",
-					smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
-					dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
-					NIPV4_ARG(sip), ntohs(sport), NIPV4_ARG(dip), ntohs(dport));
-
-			//TODO check endpoint->id ==? dmac;
+			if (verbose) {
+				printf("connect ready and found: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X sip=%u.%u.%u.%u sport=%u dip=%u.%u.%u.%u dport=%u\n",
+						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
+						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
+						NIPV4_ARG(sip), ntohs(sport), NIPV4_ARG(dip), ntohs(dport));
+			}
 
 			//send to peer to get connection
 			do {
@@ -156,7 +159,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				eb->addr = dip;
 				eb->port = dport;
 
-				printf("make connection to peer=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
+				if (verbose) {
+					printf("make connection to peer=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
+				}
 
 				eb->buf.idx = 0;
 				eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
@@ -169,7 +174,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				ev_io_start(EV_A_ & endpoint->send_ctx->io);
 			} while (0);
-
 		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000003) ||
 				get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10000003)) {
 			//got 0x00000003 connection ready.
@@ -186,9 +190,11 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				peer_t *peer = NULL;
 				pipe_t *pipe = NULL;
 
-				printf("accept in-comming connection smac=%02X:%02X:%02X:%02X:%02X:%02X, dmac=%02X:%02X:%02X:%02X:%02X:%02X\n",
-						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
-						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
+				if (verbose) {
+					printf("accept in-comming connection smac=%02X:%02X:%02X:%02X:%02X:%02X, dmac=%02X:%02X:%02X:%02X:%02X:%02X\n",
+							smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
+							dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
+				}
 
 				peer = endpoint_peer_lookup(smac);
 				if (peer == NULL) {
@@ -197,9 +203,11 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					INIT_HLIST_NODE(&peer->hnode);
 					memcpy(peer->id, smac, 6);
 
-					printf("in-come new peer(%02X:%02X:%02X:%02X:%02X:%02X) connected from @%u.%u.%u.%u:%u\n",
-							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
-							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+					if (verbose) {
+						printf("in-come peer(%02X:%02X:%02X:%02X:%02X:%02X) connected from @%u.%u.%u.%u:%u\n",
+								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
+								NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+					}
 					ret = endpoint_peer_insert(peer);
 					if (ret != 0) {
 						free(peer);
@@ -221,9 +229,11 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						return;
 					}
 
-					printf("in-come peer(%02X:%02X:%02X:%02X:%02X:%02X) connected from new pipe@%u.%u.%u.%u:%u\n",
-							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
-							NIPV4_ARG(pipe->addr), ntohs(pipe->port));
+					if (verbose) {
+						printf("in-come peer(%02X:%02X:%02X:%02X:%02X:%02X) connected create pipe@%u.%u.%u.%u:%u\n",
+								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
+								NIPV4_ARG(pipe->addr), ntohs(pipe->port));
+					}
 					ret = endpoint_peer_pipe_insert(pipe);
 					if (ret != 0) {
 						free(pipe);
@@ -243,7 +253,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						}
 						if (pos->server && pos->handshake) {
 							pos->handshake(EV_A_ pos);
-							printf("callback rawkcp: start handshake\n");
 						}
 					}
 				}
@@ -258,7 +267,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					eb->addr = addr.sin_addr.s_addr;
 					eb->port = addr.sin_port;
 
-					printf("reply connection to peer=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
+					if (verbose) {
+						printf("reply connection to peer=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
+					}
 
 					eb->buf.idx = 0;
 					eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
@@ -300,6 +311,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			nbytes = get_byte4(endpoint_recv_ctx->buf->data + 12);
 			rkcp->expect_recv_bytes = ntohl(nbytes);
 
+			if (verbose) {
+				printf("conv [%d] close msg nbytes=%u\n", conv, nbytes);
+			}
+
 			if (rkcp->server) {
 				server_t *server = rkcp->server;
 				server->stage = STAGE_CLOSE;
@@ -335,7 +350,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 		pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
 		if (pipe == NULL) {
-			printf("endpoint_peer_pipe_lookup no pipe conv=%u\n", conv);
+			//printf("endpoint_peer_pipe_lookup no pipe conv=%u\n", conv);
 			return;
 		}
 		rkcp = rawkcp_lookup(conv, pipe->peer->id);
@@ -551,10 +566,13 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 
 				if (host && port) {
-					printf("do handshake conv=%u, new host=%s port=%s\n", conv, host, port);
+					if (verbose) {
+						printf("do handshake conv[%u], new host=%s port=%s\n", conv, host, port);
+					}
 					local_t *local = connect_to_local(EV_A_ host, port);
 					if (local == NULL) {
-						printf("connect error\n");
+						//printf("connect error\n");
+						//TODO send close back?
 						return;
 					}
 					local->rkcp = rkcp;

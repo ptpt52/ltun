@@ -97,20 +97,14 @@ int rawkcp_attach_endpoint(EV_P_ rawkcp_t *rkcp, endpoint_t *endpoint)
 	return endpoint_attach_rawkcp(EV_A_ endpoint, rkcp);
 }
 
-int ito = 0;
+int reuse_port = 1;
 int verbose = 0;
-int reuse_port = 0;
 
 static int set_reuseport(int socket)
 {
 	int opt = 1;
 	return setsockopt(socket, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
 }
-
-static int server_conn = 0;
-
-uint64_t tx                  = 0;
-uint64_t rx                  = 0;
 
 static struct ev_signal sigint_watcher;
 static struct ev_signal sigterm_watcher;
@@ -265,7 +259,9 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 	ssize_t r = recv(local->fd, rkcp->buf->data, BUF_SIZE, 0);
 	if (r == 0) {
 		// connection closed
-		printf("local_recv: close the connection\n");
+		if (verbose) {
+			printf("local_recv: close the connection\n");
+		}
 		close_and_free_local(EV_A_ local);
 		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
 		close_and_free_rawkcp(EV_A_ rkcp);
@@ -571,7 +567,7 @@ static void rawkcp_send_handshake(EV_P_ rawkcp_t *rkcp)
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	rkcp->buf->len = 0; //clear after use
 	if (s < 0) {
-		perror("ikcp_send");
+		perror("rawkcp_send_handshake: ikcp_send");
 	}
 }
 
@@ -691,10 +687,6 @@ static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 
 static server_t *new_server(int fd, listen_ctx_t *listener)
 {
-	if (verbose) {
-		server_conn++;
-	}
-
 	server_t *server;
 	server = malloc(sizeof(server_t));
 
@@ -977,12 +969,12 @@ int main(int argc, char **argv)
 
 	memcpy(endpoint->id, local_mac, 6);
 	printf("local_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", local_mac[0], local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5]);
+	printf("target_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", target_mac[0], target_mac[1], target_mac[2], target_mac[3], target_mac[4], target_mac[5]);
 
 	if (endpoint_getaddrinfo(ktun, "910", &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
 		FATAL("endpoint_getaddrinfo error");
 	}
-	printf("ktun_addr=%u.%u.%u.%u ktun_port=%u\n",
-			NIPV4_ARG(endpoint->ktun_addr), ntohs(endpoint->ktun_port));
+	printf("ktun_addr=%u.%u.%u.%u ktun_port=%u\n", NIPV4_ARG(endpoint->ktun_addr), ntohs(endpoint->ktun_port));
 
 	endpoint_ktun_start(endpoint);
 

@@ -124,7 +124,7 @@ int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 	if (rkcp->endpoint == NULL)
 		return -1;
 
-	printf("rawkcp_output len=%u\n", len);
+	//printf("rawkcp_output len=%u\n", len);
 
 	pipe = endpoint_peer_pipe_select(rkcp->peer);
 	if (pipe == NULL) {
