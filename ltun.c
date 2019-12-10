@@ -347,7 +347,7 @@ static void local_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 
 	close_and_free_rawkcp(EV_A_ rkcp);
 	close_and_free_local(EV_A_ local);
-	printf("%s\n", __func__);
+	//printf("%s\n", __func__);
 }
 
 static local_t *new_local(int fd)
@@ -591,7 +591,9 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	ssize_t r = recv(server->fd, rkcp->buf->data, BUF_SIZE, 0);
 	if (r == 0) {
 		// connection closed
-		printf("server_recv: close the connection\n");
+		if (verbose) {
+			printf("server_recv: close the connection\n");
+		}
 		close_and_free_server(EV_A_ server);
 		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
 		close_and_free_rawkcp(EV_A_ rkcp);
@@ -682,7 +684,7 @@ static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 
 	close_and_free_rawkcp(EV_A_ rkcp);
 	close_and_free_server(EV_A_ server);
-	printf("%s\n", __func__);
+	//printf("%s\n", __func__);
 }
 
 static server_t *new_server(int fd, listen_ctx_t *listener)

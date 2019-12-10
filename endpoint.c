@@ -47,7 +47,7 @@ void default_eb_recycle(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb
 	if (eb->repeat > 0) {
 		peer_t *peer = endpoint_peer_lookup(eb->dmac);
 		if (peer) {
-			printf("default_eb_recycle found peer\n");
+			//printf("default_eb_recycle found peer\n");
 			free(eb);
 			return;
 		}
