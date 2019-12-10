@@ -268,8 +268,9 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 	if (r == 0) {
 		// connection closed
 		printf("local_recv: close the connection\n");
+		//TODO we close local, not rkcp
 		close_and_free_local(EV_A_ local);
-		close_and_free_rawkcp(EV_A_ rkcp);
+		//close_and_free_rawkcp(EV_A_ rkcp);
 		return;
 	} else if (r == -1) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -564,8 +565,9 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	if (r == 0) {
 		// connection closed
 		printf("server_recv: close the connection\n");
-		close_and_free_rawkcp(EV_A_ rkcp);
+		//TODO we close server, not rkcp
 		close_and_free_server(EV_A_ server);
+		//close_and_free_rawkcp(EV_A_ rkcp);
 		return;
 	} else if (r == -1) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
