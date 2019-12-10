@@ -280,6 +280,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x006b6370)) {
 			//got close msg from remote, kcp need close
 			int conv;
+			unsigned int nbytes;
 			rawkcp_t *rkcp;
 			pipe_t *pipe;
 
@@ -295,7 +296,8 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				return;
 			}
 
-			rkcp->expect_recv_bytes = get_byte4(endpoint_recv_ctx->buf->data + 8);
+			nbytes = get_byte4(endpoint_recv_ctx->buf->data + 8);
+			rkcp->expect_recv_bytes = ntohl(nbytes);
 
 			if (rkcp->server) {
 				server_t *server = rkcp->server;
