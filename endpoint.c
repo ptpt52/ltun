@@ -355,6 +355,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				return;
 			}
 
+			int n_recv = 0;
 			do {
 				int len = ikcp_recv(rkcp->kcp, (char *)server->buf->data + server->buf->len, BUF_SIZE - server->buf->len);
 				if (len < 0) {
@@ -362,6 +363,11 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 				server->buf->len += len;
 				//printf("server get%u[%s]\n", server->buf->len, server->buf->data + server->buf->idx);
+				if (++n_recv >= 8) {
+					rkcp->recv_stage = STAGE_PAUSE; //pause stream
+					ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
+					return;
+				}
 
 				// has data to send
 				ssize_t s = send(server->fd, server->buf->data + server->buf->idx, server->buf->len, 0);
@@ -397,6 +403,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				return;
 			}
 
+			int n_recv = 0;
 			do {
 				int len = ikcp_recv(rkcp->kcp, (char *)local->buf->data + local->buf->len, BUF_SIZE - local->buf->len);
 				if (len < 0) {
@@ -404,6 +411,11 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 				local->buf->len += len;
 				//printf("local get%u[%s]\n", local->buf->len, local->buf->data + local->buf->idx);
+				if (++n_recv >= 8) {
+					rkcp->recv_stage = STAGE_PAUSE; //pause stream
+					ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
+					return;
+				}
 
 				// has data to send
 				ssize_t s = send(local->fd, local->buf->data + local->buf->idx, local->buf->len, 0);
