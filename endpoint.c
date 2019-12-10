@@ -285,6 +285,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			pipe_t *pipe;
 
 			conv = get_byte4(endpoint_recv_ctx->buf->data + 8);
+			conv = ntohl(conv);
 
 			pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
 			if (pipe == NULL) {
