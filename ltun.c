@@ -264,7 +264,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		return;
 	}
 
-	ssize_t r = recv(local->fd, rkcp->buf->data, 1376, 0);
+	ssize_t r = recv(local->fd, rkcp->buf->data, rkcp->kcp->mss, 0);
 	if (r == 0) {
 		// connection closed
 		printf("local_recv: close the connection\n");
@@ -561,7 +561,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 
 	ev_timer_again(EV_A_ & server->watcher);
 
-	ssize_t r = recv(server->fd, rkcp->buf->data, 1376, 0);
+	ssize_t r = recv(server->fd, rkcp->buf->data, rkcp->kcp->mss, 0);
 	if (r == 0) {
 		// connection closed
 		printf("server_recv: close the connection\n");
