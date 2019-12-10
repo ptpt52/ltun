@@ -277,6 +277,40 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
 						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
 			}
+		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x006b6370)) {
+			//got close msg from remote, kcp need close
+			int conv;
+			rawkcp_t *rkcp;
+			pipe_t *pipe;
+
+			conv = get_byte4(endpoint_recv_ctx->buf->data + 4);
+
+			pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
+			if (pipe == NULL) {
+				return;
+			}
+
+			rkcp = rawkcp_lookup(conv, pipe->peer->id);
+			if (rkcp == NULL) {
+				return;
+			}
+
+			rkcp->expect_recv_bytes = get_byte4(endpoint_recv_ctx->buf->data + 8);
+
+			if (rkcp->server) {
+				rkcp->server->send_stage = STAGE_CLOSE;
+				if (rkcp->expect_recv_bytes == rkcp->recv_bytes) {
+					shutdown(rkcp->server->fd, SHUT_WR);
+				}
+				return;
+			}
+			if (rkcp->local) {
+				rkcp->local->send_stage = STAGE_CLOSE;
+				if (rkcp->expect_recv_bytes == rkcp->recv_bytes) {
+					shutdown(rkcp->local->fd, SHUT_WR);
+				}
+				return;
+			}
 		} else {
 			//unknown KTUN code
 			printf("unknown KTUN code=0x%08x\n", get_byte4(endpoint_recv_ctx->buf->data + 4));
@@ -366,13 +400,20 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				server->buf->len += len;
 				rkcp->recv_bytes += len;
 				//printf("server get%u[%s]\n", server->buf->len, server->buf->data + server->buf->idx);
+				if (server->send_stage == STAGE_CLOSE) {
+					if (rkcp->expect_recv_bytes == rkcp->recv_bytes) {
+						//EOF
+						rkcp->recv_stage = STAGE_CLOSE;
+					}
+				}
 				if (++n_recv >= 8) {
-					rkcp->recv_stage = STAGE_PAUSE; //pause stream
+					rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
 					ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
 					return;
 				}
 
 				// has data to send
+				ev_timer_again(EV_A_ & server->watcher);
 				ssize_t s = send(server->fd, server->buf->data + server->buf->idx, server->buf->len, 0);
 				if (s == -1) {
 					if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -380,7 +421,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						close_and_free_rawkcp(EV_A_ rkcp);
 						close_and_free_server(EV_A_ server);
 					} else {
-						rkcp->recv_stage = STAGE_PAUSE; //pause stream
+						rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
 						ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
 					}
 					return;
@@ -388,13 +429,16 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					// partly sent, move memory, wait for the next time to send
 					server->buf->len -= s;
 					server->buf->idx += s;
-					rkcp->recv_stage = STAGE_PAUSE; //pause stream
+					rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
 					ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
 					return;
 				} else {
 					// all sent out, wait for reading
 					server->buf->len = 0;
 					server->buf->idx = 0;
+				}
+				if (rkcp->recv_stage == STAGE_CLOSE) {
+					shutdown(server->fd, SHUT_WR);
 				}
 			} while (1);
 
@@ -415,13 +459,20 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				local->buf->len += len;
 				rkcp->recv_bytes += len;
 				//printf("local get%u[%s]\n", local->buf->len, local->buf->data + local->buf->idx);
+				if (local->send_stage == STAGE_CLOSE) {
+					if (rkcp->expect_recv_bytes == rkcp->recv_bytes) {
+						//EOF
+						rkcp->recv_stage = STAGE_CLOSE;
+					}
+				}
 				if (++n_recv >= 8) {
-					rkcp->recv_stage = STAGE_PAUSE; //pause stream
+					rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
 					ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
 					return;
 				}
 
 				// has data to send
+				ev_timer_again(EV_A_ & local->watcher);
 				ssize_t s = send(local->fd, local->buf->data + local->buf->idx, local->buf->len, 0);
 				if (s == -1) {
 					if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -429,7 +480,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						close_and_free_rawkcp(EV_A_ rkcp);
 						close_and_free_local(EV_A_ local);
 					} else {
-						rkcp->recv_stage = STAGE_PAUSE; //pause stream
+						rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
 						ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
 					}
 					return;
@@ -437,13 +488,16 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					// partly sent, move memory, wait for the next time to send
 					local->buf->len -= s;
 					local->buf->idx += s;
-					rkcp->recv_stage = STAGE_PAUSE; //pause stream
+					rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
 					ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
 					return;
 				} else {
 					// all sent out, wait for reading
 					local->buf->len = 0;
 					local->buf->idx = 0;
+				}
+				if (rkcp->recv_stage == STAGE_CLOSE) {
+					shutdown(local->fd, SHUT_WR);
 				}
 			} while (1);
 

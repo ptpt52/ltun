@@ -20,6 +20,7 @@ typedef struct rawkcp_t {
 	int recv_stage;
 	unsigned int send_bytes;
 	unsigned int recv_bytes;
+	unsigned int expect_recv_bytes;
 
 	ikcpcb *kcp;
 	unsigned int conv;
