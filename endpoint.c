@@ -319,6 +319,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				server_t *server = rkcp->server;
 				server->stage = STAGE_CLOSE;
 				if (rkcp->expect_recv_bytes == rkcp->recv_bytes) {
+					if (verbose) {
+						printf("[close]: %s: conv[%u] tx:%u rx:%u @server\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+					}
 					close_and_free_server(EV_A_ server);
 					close_and_free_rawkcp(EV_A_ rkcp);
 				}
@@ -328,6 +331,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				local_t *local = rkcp->local;
 				local->stage = STAGE_CLOSE;
 				if (rkcp->expect_recv_bytes == rkcp->recv_bytes) {
+					if (verbose) {
+						printf("[close]: %s: conv[%u] tx:%u rx:%u @local\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+					}
 					close_and_free_local(EV_A_ local);
 					close_and_free_rawkcp(EV_A_ rkcp);
 				}
@@ -401,9 +407,11 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						rkcp->send_stage = STAGE_STREAM; //rkcp handshake ack ok, ready to send
 						ev_io_start(EV_A_ & server->recv_ctx->io);
 					} else {
+						if (verbose) {
+							printf("[close]: %s: conv[%u] tx:%u rx:%u @server: unexpected\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+						}
 						close_and_free_server(EV_A_ server);
 						close_and_free_rawkcp(EV_A_ rkcp);
-						//unexpected
 						return;
 					}
 				} else {
@@ -440,7 +448,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				ssize_t s = send(server->fd, server->buf->data + server->buf->idx, server->buf->len, 0);
 				if (s == -1) {
 					if (errno != EAGAIN && errno != EWOULDBLOCK) {
-						perror("server_send_send");
+						if (verbose) {
+							printf("[close]: %s: conv[%u] tx:%u rx:%u @server on send: %s\n",
+									__func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, strerror(errno));
+						}
 						close_and_free_server(EV_A_ server);
 						rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
 						close_and_free_rawkcp(EV_A_ rkcp);
@@ -462,6 +473,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					server->buf->idx = 0;
 				}
 				if (rkcp->recv_stage == STAGE_CLOSE) {
+					if (verbose) {
+						printf("[close]: %s: conv[%u] tx:%u rx:%u @server stage close\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+					}
 					close_and_free_server(EV_A_ server);
 					close_and_free_rawkcp(EV_A_ rkcp);
 				}
@@ -505,7 +519,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				ssize_t s = send(local->fd, local->buf->data + local->buf->idx, local->buf->len, 0);
 				if (s == -1) {
 					if (errno != EAGAIN && errno != EWOULDBLOCK) {
-						perror("local_send_send");
+						if (verbose) {
+							printf("[close]: %s: conv[%u] tx:%u rx:%u @local on send: %s\n",
+									__func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, strerror(errno));
+						}
 						close_and_free_local(EV_A_ local);
 						rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
 						close_and_free_rawkcp(EV_A_ rkcp);
@@ -527,6 +544,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					local->buf->idx = 0;
 				}
 				if (rkcp->recv_stage == STAGE_CLOSE) {
+					if (verbose) {
+						printf("[close]: %s: conv[%u] tx:%u rx:%u @local stage close\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+					}
 					close_and_free_local(EV_A_ local);
 					close_and_free_rawkcp(EV_A_ rkcp);
 				}
@@ -573,7 +593,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				if (remote_port != 0) {
 					if (verbose) {
-						printf("[handshake]: %s: conv[%u], new ip=%u.%u.%u.%u port=%u\n", __func__, conv, NIPV4_ARG(remote_ip), ntohs(remote_port));
+						printf("[handshake]: %s: conv[%u] @local new ip=%u.%u.%u.%u port=%u\n", __func__, conv, NIPV4_ARG(remote_ip), ntohs(remote_port));
 					}
 					local_t *local = connect_to_local(EV_A_ remote_ip, remote_port);
 					if (local == NULL) {
