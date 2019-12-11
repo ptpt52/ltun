@@ -22,6 +22,8 @@ typedef struct rawkcp_t {
 	unsigned int recv_bytes;
 	unsigned int expect_recv_bytes;
 
+	int kcp_max_poll;
+
 	ikcpcb *kcp;
 	unsigned int conv;
 	unsigned char remote_id[6];

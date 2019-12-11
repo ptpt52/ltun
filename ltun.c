@@ -256,7 +256,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		return;
 	}
 
-	ssize_t r = recv(local->fd, rkcp->buf->data, BUF_SIZE, 0);
+	ssize_t r = recv(local->fd, rkcp->buf->data, rkcp->kcp->mss, 0);
 	if (r == 0) {
 		// connection closed
 		if (verbose) {
@@ -579,7 +579,7 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 						rkcp->recv_stage = STAGE_CLOSE;
 					}
 				}
-				if (++n_recv >= 8) {
+				if (++n_recv >= rkcp->kcp_max_poll) {
 					rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
 					ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
 					break;
@@ -633,7 +633,7 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 						rkcp->recv_stage = STAGE_CLOSE;
 					}
 				}
-				if (++n_recv >= 8) {
+				if (++n_recv >= rkcp->kcp_max_poll) {
 					rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
 					ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
 					break;
@@ -714,6 +714,8 @@ rawkcp_t *new_rawkcp(unsigned int conv, const unsigned char *remote_id)
 	ikcp_wndsize(rkcp->kcp, 384, 384);
 	ikcp_nodelay(rkcp->kcp, 0, 10, 0, 0);
 
+	rkcp->kcp_max_poll = 384 * rkcp->kcp->mss / BUF_SIZE / 4;
+
 	ev_timer_init(&rkcp->watcher, rawkcp_watcher_cb, 0.1, 0.01);
 
 	return rkcp;
@@ -780,7 +782,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 		return;
 	}
 
-	ssize_t r = recv(server->fd, rkcp->buf->data, BUF_SIZE, 0);
+	ssize_t r = recv(server->fd, rkcp->buf->data, rkcp->kcp->mss, 0);
 	if (r == 0) {
 		// connection closed
 		if (verbose) {

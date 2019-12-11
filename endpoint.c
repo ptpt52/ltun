@@ -430,7 +430,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						rkcp->recv_stage = STAGE_CLOSE;
 					}
 				}
-				if (++n_recv >= 8) {
+				if (++n_recv >= rkcp->kcp_max_poll) {
 					rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
 					ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
 					return;
@@ -495,7 +495,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						rkcp->recv_stage = STAGE_CLOSE;
 					}
 				}
-				if (++n_recv >= 8) {
+				if (++n_recv >= rkcp->kcp_max_poll) {
 					rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
 					ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
 					return;
