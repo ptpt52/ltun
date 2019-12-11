@@ -511,11 +511,14 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 	}
 
 	if (rkcp->send_stage == STAGE_CLOSE) {
-		IUINT32 slap = itimediff(current, rkcp->close_ts);
-		if (slap >= 1000 * 10) {
+		int waitsnd = ikcp_waitsnd(rkcp->kcp);
+		IINT32 slap = itimediff(current, rkcp->close_ts);
+		if (slap >= 10000 || slap <= -10000  || waitsnd == 0) {
 			ev_timer_stop(EV_A_ & rkcp->watcher);
+			if (verbose) {
+				printf("%s tx:%u rx:%u destroy rkcp=%p\n", __func__, rkcp->send_bytes, rkcp->recv_bytes, rkcp);
+			}
 			free_rawkcp(rkcp);
-			//printf("rawkcp_watcher_cb close rkcp=%p tx=%u rx=%u\n", rkcp, rkcp->send_bytes, rkcp->recv_bytes);
 		}
 		return;
 	}
