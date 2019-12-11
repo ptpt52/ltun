@@ -273,7 +273,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 			return;
 		} else {
 			if (verbose) {
-				printf("[close]: %s: conv[%u] tx:%u rx:%u on recv: %s\n",
+				fprintf(stderr, "[close]: %s: conv[%u] tx:%u rx:%u on recv: %s\n",
 						__func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, strerror(errno));
 			}
 			close_and_free_local(EV_A_ local);
@@ -341,7 +341,7 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 		} else {
 			// not connected
 			if (verbose) {
-				printf("[close]: %s: conv[%u] tx:%u rx:%u on getpeername: %s\n",
+				fprintf(stderr, "[close]: %s: conv[%u] tx:%u rx:%u on getpeername: %s\n",
 						__func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, strerror(errno));
 			}
 			close_and_free_local(EV_A_ local);
@@ -366,7 +366,7 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 		if (s == -1) {
 			if (errno != EAGAIN && errno != EWOULDBLOCK) {
 				if (verbose) {
-					printf("[close]: %s: conv[%u] tx:%u rx:%u on send: %s\n",
+					fprintf(stderr, "[close]: %s: conv[%u] tx:%u rx:%u on send: %s\n",
 							__func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, strerror(errno));
 				}
 				close_and_free_local(EV_A_ local);
@@ -608,7 +608,7 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 				if (s == -1) {
 					if (errno != EAGAIN && errno != EWOULDBLOCK) {
 						if (verbose) {
-							printf("[close]: %s: conv[%u] tx:%u rx:%u @server on send: %s\n",
+							fprintf(stderr, "[close]: %s: conv[%u] tx:%u rx:%u @server on send: %s\n",
 									__func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, strerror(errno));
 						}
 						close_and_free_server(EV_A_ server);
@@ -668,7 +668,7 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 				if (s == -1) {
 					if (errno != EAGAIN && errno != EWOULDBLOCK) {
 						if (verbose) {
-							printf("[close]: %s: conv[%u] tx:%u rx:%u @local on send: %s\n",
+							fprintf(stderr, "[close]: %s: conv[%u] tx:%u rx:%u @local on send: %s\n",
 									__func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, strerror(errno));
 						}
 						close_and_free_local(EV_A_ local);
@@ -829,7 +829,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 			return;
 		} else {
 			if (verbose) {
-				printf("[close]: %s: conv[%u] tx:%u rx:%u on recv: %s\n",
+				fprintf(stderr, "[close]: %s: conv[%u] tx:%u rx:%u on recv: %s\n",
 						__func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, strerror(errno));
 			}
 			close_and_free_server(EV_A_ server);
@@ -889,7 +889,7 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 		if (s == -1) {
 			if (errno != EAGAIN && errno != EWOULDBLOCK) {
 				if (verbose) {
-					printf("[close]: %s: conv[%u] tx:%u rx:%u on send: %s\n",
+					fprintf(stderr, "[close]: %s: conv[%u] tx:%u rx:%u on send: %s\n",
 							__func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, strerror(errno));
 				}
 				close_and_free_server(EV_A_ server);

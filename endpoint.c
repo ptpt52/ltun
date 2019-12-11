@@ -449,7 +449,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				if (s == -1) {
 					if (errno != EAGAIN && errno != EWOULDBLOCK) {
 						if (verbose) {
-							printf("[close]: %s: conv[%u] tx:%u rx:%u @server on send: %s\n",
+							fprintf(stderr, "[close]: %s: conv[%u] tx:%u rx:%u @server on send: %s\n",
 									__func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, strerror(errno));
 						}
 						close_and_free_server(EV_A_ server);
@@ -520,7 +520,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				if (s == -1) {
 					if (errno != EAGAIN && errno != EWOULDBLOCK) {
 						if (verbose) {
-							printf("[close]: %s: conv[%u] tx:%u rx:%u @local on send: %s\n",
+							fprintf(stderr, "[close]: %s: conv[%u] tx:%u rx:%u @local on send: %s\n",
 									__func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, strerror(errno));
 						}
 						close_and_free_local(EV_A_ local);
