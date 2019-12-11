@@ -328,11 +328,7 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 				printf("%s: conv[%u] local connected\n", __func__, rkcp->conv);
 			}
 			local_send_ctx->connected = 1;
-
-			if (rkcp->send_stage != STAGE_STREAM) {
-				rkcp->send_stage = STAGE_STREAM;
-				ev_io_start(EV_A_ & local->recv_ctx->io);
-			}
+			ev_io_start(EV_A_ & local->recv_ctx->io);
 
 			if (local->buf->len == 0) {
 				ev_io_stop(EV_A_ & local_send_ctx->io);
