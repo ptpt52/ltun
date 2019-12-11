@@ -312,7 +312,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			rkcp->expect_recv_bytes = ntohl(nbytes);
 
 			if (verbose) {
-				printf("conv [%d] close msg nbytes=%u\n", conv, nbytes);
+				printf("conv [%u] close msg nbytes=%u\n", conv, rkcp->expect_recv_bytes);
 			}
 
 			if (rkcp->server) {
@@ -372,7 +372,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 		int ret = ikcp_input(rkcp->kcp, (const char *)endpoint_recv_ctx->buf->data, endpoint_recv_ctx->buf->len);
 		if (ret < 0) {
-			printf("conv [%d] ikcp_input failed [%d]\n", conv, ret);
+			printf("conv [%u] ikcp_input failed [%d]\n", conv, ret);
 		}
 
 		if (rkcp->server) {
