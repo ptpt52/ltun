@@ -50,6 +50,8 @@ char *target_port = "80";
 const char *target_host = "127.0.0.1";
 unsigned char target_mac[6] = {0,0,0,0,0,0};
 
+unsigned int conn_timeout = 90;
+
 static void signal_cb(EV_P_ ev_signal *w, int revents);
 static void accept_cb(EV_P_ ev_io *w, int revents);
 static void rawkcp_send_handshake(EV_P_ rawkcp_t *rkcp);
@@ -368,11 +370,11 @@ static local_t *new_local(int fd)
 	local->recv_ctx->local    = local;
 	local->send_ctx->local    = local;
 
-	int request_timeout = MAX_REQUEST_TIMEOUT + rand() % MAX_REQUEST_TIMEOUT;
+	int request_timeout = min(MAX_REQUEST_TIMEOUT, conn_timeout) + rand() % MAX_REQUEST_TIMEOUT;
 
 	ev_io_init(&local->recv_ctx->io, local_recv_cb, fd, EV_READ);
 	ev_io_init(&local->send_ctx->io, local_send_cb, fd, EV_WRITE);
-	ev_timer_init(&local->watcher, local_timeout_cb, request_timeout, request_timeout);
+	ev_timer_init(&local->watcher, local_timeout_cb, request_timeout, conn_timeout);
 
 	return local;
 }
@@ -712,12 +714,11 @@ static server_t *new_server(int fd, listen_ctx_t *listener)
 	server->listen_ctx          = listener;
 	server->rkcp              = NULL;
 
-	int request_timeout = min(MAX_REQUEST_TIMEOUT, listener->timeout)
-	                      + rand() % MAX_REQUEST_TIMEOUT;
+	int request_timeout = min(MAX_REQUEST_TIMEOUT, conn_timeout) + rand() % MAX_REQUEST_TIMEOUT;
 
 	ev_io_init(&server->recv_ctx->io, server_recv_cb, fd, EV_READ);
 	ev_io_init(&server->send_ctx->io, server_send_cb, fd, EV_WRITE);
-	ev_timer_init(&server->watcher, server_timeout_cb, request_timeout, listener->timeout);
+	ev_timer_init(&server->watcher, server_timeout_cb, request_timeout, conn_timeout);
 
 	return server;
 }
@@ -854,7 +855,7 @@ int main(int argc, char **argv)
 	endpoint_t *endpoint;
 	int fd;
 	int c;
-	char *timeout   = NULL;
+	char *timeout = NULL;
 
 	opterr = 0;
 
@@ -903,8 +904,10 @@ int main(int argc, char **argv)
 	}
 
 	if (timeout == NULL) {
-		timeout = "60";
+		timeout = "90";
 	}
+
+	conn_timeout = atoi(timeout);
 
 	if (ktun == NULL) {
 		ktun = "ec1ns.ptpt52.com";
@@ -949,7 +952,6 @@ int main(int argc, char **argv)
 		listen_ctx_t *listen_ctx = &listen_ctx_local;
 
 		// Setup proxy context
-		listen_ctx->timeout = atoi(timeout);
 		listen_ctx->fd      = listenfd;
 		listen_ctx->loop    = loop;
 

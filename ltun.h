@@ -19,7 +19,6 @@
 typedef struct listen_ctx_t {
 	ev_io io;
 	int fd;
-	int timeout;
 	struct ev_loop *loop;
 } listen_ctx_t;
 
