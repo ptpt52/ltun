@@ -270,6 +270,8 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		return;
 	} else if (r == -1) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			// no data
+			// printf("continue to wait for recv\n");
 			return;
 		} else {
 			perror("local_recv: recv");
@@ -349,9 +351,13 @@ static void local_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 	rawkcp_t *rkcp = local->rkcp;
 
 	close_and_free_local(EV_A_ local);
-	rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
-	close_and_free_rawkcp(EV_A_ rkcp);
-	//printf("%s\n", __func__);
+	if (rkcp) {
+		if (verbose) {
+			printf("%s: conv[%u] tx:%u rx:%u close\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+		}
+		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
+		close_and_free_rawkcp(EV_A_ rkcp);
+	}
 }
 
 static local_t *new_local(int fd)
@@ -615,7 +621,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	} else if (r == -1) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
 			// no data
-			// continue to wait for recv
+			// printf("continue to wait for recv\n");
 			return;
 		} else {
 			perror("server_recv: recv");
@@ -699,9 +705,13 @@ static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 	rawkcp_t *rkcp = server->rkcp;
 
 	close_and_free_server(EV_A_ server);
-	rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
-	close_and_free_rawkcp(EV_A_ rkcp);
-	//printf("%s\n", __func__);
+	if (rkcp) {
+		if (verbose) {
+			printf("%s: conv[%u] tx:%u rx:%u close\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+		}
+		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
+		close_and_free_rawkcp(EV_A_ rkcp);
+	}
 }
 
 static server_t *new_server(int fd, listen_ctx_t *listener)
