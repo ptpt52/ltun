@@ -711,10 +711,10 @@ rawkcp_t *new_rawkcp(unsigned int conv, const unsigned char *remote_id)
 	rkcp->buf->idx = 0;
 
 	rkcp->kcp->output = rawkcp_output;
-	ikcp_wndsize(rkcp->kcp, 384, 384);
+	ikcp_wndsize(rkcp->kcp, 256, 256);
 	ikcp_nodelay(rkcp->kcp, 0, 10, 0, 0);
 
-	rkcp->kcp_max_poll = 384 * rkcp->kcp->mss / BUF_SIZE / 4;
+	rkcp->kcp_max_poll = 256 * rkcp->kcp->mss / BUF_SIZE / 4;
 
 	ev_timer_init(&rkcp->watcher, rawkcp_watcher_cb, 0.1, 0.01);
 
