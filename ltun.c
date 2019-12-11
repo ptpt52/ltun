@@ -530,9 +530,10 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 			free_rawkcp(rkcp);
 			//printf("rawkcp_watcher_cb close rkcp=%p tx=%u rx=%u\n", rkcp, rkcp->send_bytes, rkcp->recv_bytes);
 		}
-	} else {
-		ev_timer_again(EV_A_ & rkcp->watcher);
+		return;
 	}
+
+	ev_timer_again(EV_A_ & rkcp->watcher);
 
 	if (rkcp->send_stage == STAGE_PAUSE) {
 		int waitsnd = ikcp_waitsnd(rkcp->kcp);
