@@ -318,7 +318,7 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 		int r = getpeername(local->fd, (struct sockaddr *)&addr, &len);
 		if (r == 0) {
 			if (verbose) {
-				printf("local connected\n");
+				printf("%s: conv[%u] local connected\n", __func__, rkcp->conv);
 			}
 			local_send_ctx->connected = 1;
 			ev_io_start(EV_A_ & local->recv_ctx->io);
