@@ -317,6 +317,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 			if (rkcp->server) {
 				server_t *server = rkcp->server;
+				if (server->stage == STAGE_CLOSE) {
+					return;
+				}
 				server->stage = STAGE_CLOSE;
 				if (rkcp->expect_recv_bytes == rkcp->recv_bytes) {
 					if (verbose) {
@@ -329,6 +332,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			}
 			if (rkcp->local) {
 				local_t *local = rkcp->local;
+				if (local->stage == STAGE_CLOSE) {
+					return;
+				}
 				local->stage = STAGE_CLOSE;
 				if (rkcp->expect_recv_bytes == rkcp->recv_bytes) {
 					if (verbose) {
