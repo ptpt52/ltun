@@ -1031,10 +1031,6 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 #endif
 	setnonblocking(serverfd);
 
-	if (verbose) {
-		printf("accept a connection\n");
-	}
-
 	server_t *server = new_server(serverfd, listener);
 	ev_timer_start(EV_A_ & server->watcher);
 
@@ -1054,6 +1050,17 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 			server->rkcp = rkcp;
 			rkcp->server = server;
 			ev_timer_start(EV_A_ & rkcp->watcher);
+			if (verbose) {
+				struct sockaddr_in *addr;
+				struct sockaddr_storage storage;
+				socklen_t len = sizeof(struct sockaddr_storage);
+				memset(&storage, 0, len);
+				getpeername(server->fd, (struct sockaddr *)&storage, &len);
+				addr = (struct sockaddr_in *)&storage;
+
+				printf("[new]: %s: conv[%u] accept a connection from: %u.%u.%u.%u:%u\n",
+						__func__, rkcp->conv, NIPV4_ARG(addr->sin_addr.s_addr), ntohs(addr->sin_port));
+			}
 		}
 	}
 }
