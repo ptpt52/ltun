@@ -414,6 +414,16 @@ local_t *connect_to_local(EV_P_ const char *host, const char *port)
 			continue;
 		}
 
+		// Enable TCP keepalive feature
+		int keepAlive    = 1;
+		int keepIdle     = 40;
+		int keepInterval = 20;
+		int keepCount    = 5;
+		setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepAlive, sizeof(keepAlive));
+		setsockopt(sockfd, SOL_TCP, TCP_KEEPIDLE, (void *)&keepIdle, sizeof(keepIdle));
+		setsockopt(sockfd, SOL_TCP, TCP_KEEPINTVL, (void *)&keepInterval, sizeof(keepInterval));
+		setsockopt(sockfd, SOL_TCP, TCP_KEEPCNT, (void *)&keepCount, sizeof(keepCount));
+
 		int opt = 1;
 		setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
 #ifdef SO_NOSIGPIPE
@@ -772,6 +782,16 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 		perror("accept");
 		return;
 	}
+
+	// Enable TCP keepalive feature
+	int keepAlive    = 1;
+	int keepIdle     = 40;
+	int keepInterval = 20;
+	int keepCount    = 5;
+	setsockopt(serverfd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepAlive, sizeof(keepAlive));
+	setsockopt(serverfd, SOL_TCP, TCP_KEEPIDLE, (void *)&keepIdle, sizeof(keepIdle));
+	setsockopt(serverfd, SOL_TCP, TCP_KEEPINTVL, (void *)&keepInterval, sizeof(keepInterval));
+	setsockopt(serverfd, SOL_TCP, TCP_KEEPCNT, (void *)&keepCount, sizeof(keepCount));
 
 	int opt = 1;
 	setsockopt(serverfd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
