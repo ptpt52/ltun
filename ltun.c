@@ -307,6 +307,7 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 	if (local->buf->len == 0) {
 		// close and free
 		close_and_free_local(EV_A_ local);
+		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
 		close_and_free_rawkcp(EV_A_ rkcp);
 		return;
 	} else {
@@ -345,8 +346,9 @@ static void local_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 	local_t *local = container_of(watcher, local_t, watcher);
 	rawkcp_t *rkcp = local->rkcp;
 
-	close_and_free_rawkcp(EV_A_ rkcp);
 	close_and_free_local(EV_A_ local);
+	rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
+	close_and_free_rawkcp(EV_A_ rkcp);
 	//printf("%s\n", __func__);
 }
 
@@ -644,6 +646,7 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 			printf("server_send close the connection\n");
 		}
 		close_and_free_server(EV_A_ server);
+		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
 		close_and_free_rawkcp(EV_A_ rkcp);
 		return;
 	} else {
@@ -672,6 +675,7 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 				close_and_free_rawkcp(EV_A_ rkcp);
 			} else {
 				rkcp->recv_stage = STAGE_STREAM;
+				//TODO send active msg to endpoint
 			}
 		}
 	}
@@ -682,8 +686,9 @@ static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 	server_t *server = container_of(watcher, server_t, watcher);
 	rawkcp_t *rkcp = server->rkcp;
 
-	close_and_free_rawkcp(EV_A_ rkcp);
 	close_and_free_server(EV_A_ server);
+	rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
+	close_and_free_rawkcp(EV_A_ rkcp);
 	//printf("%s\n", __func__);
 }
 
