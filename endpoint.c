@@ -312,7 +312,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			rkcp->expect_recv_bytes = ntohl(nbytes);
 
 			if (verbose) {
-				printf("conv [%u] close msg nbytes=%u\n", conv, rkcp->expect_recv_bytes);
+				printf("[close]: %s: conv[%u] get close msg nbytes=%u\n", __func__, conv, rkcp->expect_recv_bytes);
 			}
 
 			if (rkcp->server) {
@@ -372,7 +372,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 		int ret = ikcp_input(rkcp->kcp, (const char *)endpoint_recv_ctx->buf->data, endpoint_recv_ctx->buf->len);
 		if (ret < 0) {
-			printf("conv [%u] ikcp_input failed [%d]\n", conv, ret);
+			printf("[kcp]: %s: conv[%u] ikcp_input failed [%d]\n", __func__, conv, ret);
 		}
 
 		if (rkcp->server) {
@@ -573,7 +573,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				if (remote_port != 0) {
 					if (verbose) {
-						printf("do handshake conv[%u], new ip=%u.%u.%u.%u port=%u\n", conv, NIPV4_ARG(remote_ip), ntohs(remote_port));
+						printf("[handshake]: %s: conv[%u], new ip=%u.%u.%u.%u port=%u\n", __func__, conv, NIPV4_ARG(remote_ip), ntohs(remote_port));
 					}
 					local_t *local = connect_to_local(EV_A_ remote_ip, remote_port);
 					if (local == NULL) {

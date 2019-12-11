@@ -260,7 +260,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 	if (r == 0) {
 		// connection closed
 		if (verbose) {
-			printf("%s: conv[%u] tx:%u rx:%u close\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+			printf("[close]: %s: conv[%u] tx:%u rx:%u\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
 		}
 		close_and_free_local(EV_A_ local);
 		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
@@ -273,7 +273,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 			return;
 		} else {
 			if (verbose) {
-				printf("%s: conv[%u] tx:%u rx:%u close by recv: %s\n",
+				printf("[close]: %s: conv[%u] tx:%u rx:%u on recv: %s\n",
 						__func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, strerror(errno));
 			}
 			close_and_free_local(EV_A_ local);
@@ -328,7 +328,7 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 		int r = getpeername(local->fd, (struct sockaddr *)&addr, &len);
 		if (r == 0) {
 			if (verbose) {
-				printf("%s: conv[%u] local connected\n", __func__, rkcp->conv);
+				printf("[connect]: %s: conv[%u] local connected\n", __func__, rkcp->conv);
 			}
 			local_send_ctx->connected = 1;
 			ev_io_start(EV_A_ & local->recv_ctx->io);
@@ -393,7 +393,7 @@ static void local_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 	close_and_free_local(EV_A_ local);
 	if (rkcp) {
 		if (verbose) {
-			printf("%s: conv[%u] tx:%u rx:%u close\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+			printf("[close]: %s: conv[%u] tx:%u rx:%u\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
 		}
 		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
 		close_and_free_rawkcp(EV_A_ rkcp);
@@ -519,7 +519,7 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 		if (slap >= 10000 || slap <= -10000  || waitsnd == 0) {
 			ev_timer_stop(EV_A_ & rkcp->watcher);
 			if (verbose) {
-				printf("%s conv[%u] tx:%u rx:%u destroy\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+				printf("[destroy]: %s conv[%u] tx:%u rx:%u\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
 			}
 			free_rawkcp(rkcp);
 		}
@@ -792,7 +792,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	if (r == 0) {
 		// connection closed
 		if (verbose) {
-			printf("%s: conv[%u] tx:%u rx:%u close\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+			printf("[close]: %s: conv[%u] tx:%u rx:%u close\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
 		}
 		close_and_free_server(EV_A_ server);
 		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
@@ -805,7 +805,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 			return;
 		} else {
 			if (verbose) {
-				printf("%s: conv[%u] tx:%u rx:%u close by recv: %s\n",
+				printf("[close]: %s: conv[%u] tx:%u rx:%u on recv: %s\n",
 						__func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, strerror(errno));
 			}
 			close_and_free_server(EV_A_ server);
@@ -898,7 +898,7 @@ static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 	close_and_free_server(EV_A_ server);
 	if (rkcp) {
 		if (verbose) {
-			printf("%s: conv[%u] tx:%u rx:%u close\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+			printf("[close]: %s: conv[%u] tx:%u rx:%u\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
 		}
 		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
 		close_and_free_rawkcp(EV_A_ rkcp);
