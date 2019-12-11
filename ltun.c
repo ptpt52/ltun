@@ -376,8 +376,7 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 				close_and_free_local(EV_A_ local);
 				close_and_free_rawkcp(EV_A_ rkcp);
 			} else {
-				rkcp->recv_stage = STAGE_STREAM;
-				//TODO recv more
+				rkcp->recv_stage = STAGE_POLL;
 			}
 		}
 	}
@@ -558,6 +557,118 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 				}
 				ev_io_start(EV_A_ & local->recv_ctx->io);
 			}
+		}
+	}
+
+	if (rkcp->recv_stage == STAGE_POLL) {
+		if (rkcp->server) {
+			server_t *server = rkcp->server;
+			int n_recv = 0;
+			do {
+				int len = ikcp_recv(rkcp->kcp, (char *)server->buf->data + server->buf->len, BUF_SIZE - server->buf->len);
+				if (len < 0) {
+					rkcp->recv_stage = STAGE_STREAM;
+					break;
+				}
+				server->buf->len += len;
+				rkcp->recv_bytes += len;
+				ev_timer_again(EV_A_ & server->watcher);
+
+				if (server->stage == STAGE_CLOSE) {
+					if (rkcp->expect_recv_bytes == rkcp->recv_bytes) {
+						rkcp->recv_stage = STAGE_CLOSE;
+					}
+				}
+				if (++n_recv >= 8) {
+					rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
+					ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
+					break;
+				}
+
+				// has data to send
+				ssize_t s = send(server->fd, server->buf->data + server->buf->idx, server->buf->len, 0);
+				if (s == -1) {
+					if (errno != EAGAIN && errno != EWOULDBLOCK) {
+						perror("server_send_send");
+						close_and_free_server(EV_A_ server);
+						rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
+						close_and_free_rawkcp(EV_A_ rkcp);
+					} else {
+						rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
+						ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
+					}
+					break;
+				} else if (s < server->buf->len) {
+					// partly sent, move memory, wait for the next time to send
+					server->buf->len -= s;
+					server->buf->idx += s;
+					rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
+					ev_io_start(EV_A_ & server->send_ctx->io); //start send_ctx
+					break;
+				} else {
+					// all sent out, wait for reading
+					server->buf->len = 0;
+					server->buf->idx = 0;
+				}
+				if (rkcp->recv_stage == STAGE_CLOSE) {
+					close_and_free_server(EV_A_ server);
+					close_and_free_rawkcp(EV_A_ rkcp);
+				}
+			} while (1);
+		} else if (rkcp->local) {
+			local_t *local = rkcp->local;
+			int n_recv = 0;
+			do {
+				int len = ikcp_recv(rkcp->kcp, (char *)local->buf->data + local->buf->len, BUF_SIZE - local->buf->len);
+				if (len < 0) {
+					rkcp->recv_stage = STAGE_STREAM;
+					break;
+				}
+				local->buf->len += len;
+				rkcp->recv_bytes += len;
+				ev_timer_again(EV_A_ & local->watcher);
+
+				if (local->stage == STAGE_CLOSE) {
+					if (rkcp->expect_recv_bytes == rkcp->recv_bytes) {
+						rkcp->recv_stage = STAGE_CLOSE;
+					}
+				}
+				if (++n_recv >= 8) {
+					rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
+					ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
+					break;
+				}
+
+				// has data to send
+				ssize_t s = send(local->fd, local->buf->data + local->buf->idx, local->buf->len, 0);
+				if (s == -1) {
+					if (errno != EAGAIN && errno != EWOULDBLOCK) {
+						perror("local_send_send");
+						close_and_free_local(EV_A_ local);
+						rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
+						close_and_free_rawkcp(EV_A_ rkcp);
+					} else {
+						rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
+						ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
+					}
+					break;
+				} else if (s < local->buf->len) {
+					// partly sent, move memory, wait for the next time to send
+					local->buf->len -= s;
+					local->buf->idx += s;
+					rkcp->recv_stage = rkcp->recv_stage == STAGE_CLOSE ? STAGE_CLOSE : STAGE_PAUSE; //pause stream
+					ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
+					break;
+				} else {
+					// all sent out, wait for reading
+					local->buf->len = 0;
+					local->buf->idx = 0;
+				}
+				if (rkcp->recv_stage == STAGE_CLOSE) {
+					close_and_free_local(EV_A_ local);
+					close_and_free_rawkcp(EV_A_ rkcp);
+				}
+			} while (1);
 		}
 	}
 }
@@ -762,8 +873,7 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 				close_and_free_server(EV_A_ server);
 				close_and_free_rawkcp(EV_A_ rkcp);
 			} else {
-				rkcp->recv_stage = STAGE_STREAM;
-				//TODO send active msg to endpoint
+				rkcp->recv_stage = STAGE_POLL;
 			}
 		}
 	}

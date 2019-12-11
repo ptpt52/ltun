@@ -411,7 +411,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					return;
 				}
 			}
-			if (rkcp->recv_stage != STAGE_STREAM) {
+			if (rkcp->recv_stage == STAGE_PAUSE || rkcp->recv_stage == STAGE_POLL) {
 				return;
 			}
 
@@ -425,7 +425,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				rkcp->recv_bytes += len;
 				ev_timer_again(EV_A_ & server->watcher);
 
-				//printf("server get%u[%s]\n", server->buf->len, server->buf->data + server->buf->idx);
 				if (server->stage == STAGE_CLOSE) {
 					if (rkcp->expect_recv_bytes == rkcp->recv_bytes) {
 						rkcp->recv_stage = STAGE_CLOSE;
@@ -467,12 +466,12 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					close_and_free_rawkcp(EV_A_ rkcp);
 				}
 			} while (1);
-
 			return;
 		}
+
 		if (rkcp->local) {
 			local_t *local = rkcp->local;
-			if (rkcp->recv_stage == STAGE_PAUSE) {
+			if (rkcp->recv_stage == STAGE_PAUSE || rkcp->recv_stage == STAGE_POLL) {
 				return;
 			}
 
@@ -486,7 +485,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				rkcp->recv_bytes += len;
 				ev_timer_again(EV_A_ & local->watcher);
 
-				//printf("local get%u[%s]\n", local->buf->len, local->buf->data + local->buf->idx);
 				if (rkcp->recv_stage == STAGE_INIT || !local->send_ctx->connected) {
 					rkcp->recv_stage = STAGE_PAUSE;
 					ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
@@ -533,7 +531,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					close_and_free_rawkcp(EV_A_ rkcp);
 				}
 			} while (1);
-
 			return;
 		}
 

@@ -66,6 +66,7 @@ typedef struct local_t {
 #define STAGE_ERROR     -1  /* Error detected                   */
 #define STAGE_INIT       0  /* Initial stage                    */
 #define STAGE_PAUSE      2  /* Pause data stream                */
+#define STAGE_POLL       3  /* Poll data stream                 */
 #define STAGE_STREAM     6  /* Stream between client and server */
 #define STAGE_CLOSE      7  /* Stream closed                    */
 
