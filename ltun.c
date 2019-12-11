@@ -260,7 +260,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 	if (r == 0) {
 		// connection closed
 		if (verbose) {
-			printf("local_recv: close the connection\n");
+			printf("%s: conv[%u] tx:%u rx:%u close\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
 		}
 		close_and_free_local(EV_A_ local);
 		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
@@ -784,7 +784,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	if (r == 0) {
 		// connection closed
 		if (verbose) {
-			printf("server_recv: close the connection\n");
+			printf("%s: conv[%u] tx:%u rx:%u close\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
 		}
 		close_and_free_server(EV_A_ server);
 		rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
