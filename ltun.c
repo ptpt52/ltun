@@ -712,9 +712,9 @@ rawkcp_t *new_rawkcp(unsigned int conv, const unsigned char *remote_id)
 
 	rkcp->kcp->output = rawkcp_output;
 	ikcp_wndsize(rkcp->kcp, 384, 384);
-	ikcp_nodelay(rkcp->kcp, 0, 20, 0, 0);
+	ikcp_nodelay(rkcp->kcp, 0, 10, 0, 0);
 
-	ev_timer_init(&rkcp->watcher, rawkcp_watcher_cb, 0.1, 0.02);
+	ev_timer_init(&rkcp->watcher, rawkcp_watcher_cb, 0.1, 0.01);
 
 	return rkcp;
 }
