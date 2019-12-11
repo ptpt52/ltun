@@ -293,7 +293,10 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 	} else {
 		rkcp->send_bytes += rkcp->buf->len;
 	}
-	return;
+
+	if (!local->recv_ctx->connected) {
+		local->recv_ctx->connected = 1;
+	}
 }
 
 static void local_send_cb(EV_P_ ev_io *w, int revents)
@@ -306,6 +309,33 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 		printf("invalid local\n");
 		close_and_free_local(EV_A_ local);
 		return;
+	}
+
+	if (!local_send_ctx->connected) {
+		struct sockaddr_storage addr;
+		socklen_t len = sizeof(struct sockaddr_storage);
+		memset(&addr, 0, len);
+		int r = getpeername(local->fd, (struct sockaddr *)&addr, &len);
+		if (r == 0) {
+			if (verbose) {
+				printf("local connected\n");
+			}
+			local_send_ctx->connected = 1;
+			ev_io_start(EV_A_ & local->recv_ctx->io);
+
+			if (local->buf->len == 0) {
+				ev_io_stop(EV_A_ & local_send_ctx->io);
+				rkcp->recv_stage = STAGE_STREAM;
+				return;
+			}
+		} else {
+			perror("local_send_getpeername");
+			// not connected
+			close_and_free_local(EV_A_ local);
+			rkcp->send_stage = STAGE_CLOSE; //flush rkcp and close
+			close_and_free_rawkcp(EV_A_ rkcp);
+			return;
+		}
 	}
 
 	if (local->buf->len == 0) {
@@ -340,6 +370,7 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 				close_and_free_rawkcp(EV_A_ rkcp);
 			} else {
 				rkcp->recv_stage = STAGE_STREAM;
+				//TODO recv more
 			}
 		}
 	}

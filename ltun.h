@@ -46,6 +46,7 @@ typedef struct server_t {
 
 typedef struct local_ctx_t {
 	ev_io io;
+	int connected;
 	struct local_t *local;
 } local_ctx_t;
 

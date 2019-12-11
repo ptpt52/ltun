@@ -384,6 +384,8 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 				server->buf->len += len;
 				rkcp->recv_bytes += len;
+				ev_timer_again(EV_A_ & server->watcher);
+
 				if (server->buf->len >= 4) {
 					if (get_byte4(server->buf->data) == htonl(KTUN_P_MAGIC)) {
 						rkcp->recv_stage = STAGE_STREAM;
@@ -396,7 +398,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						} else {
 							server->buf->idx = 0; //clear
 						}
-						rkcp->send_stage = STAGE_STREAM;
+						rkcp->send_stage = STAGE_STREAM; //rkcp handshake ack ok, ready to send
 						ev_io_start(EV_A_ & server->recv_ctx->io);
 					} else {
 						close_and_free_server(EV_A_ server);
@@ -421,6 +423,8 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 				server->buf->len += len;
 				rkcp->recv_bytes += len;
+				ev_timer_again(EV_A_ & server->watcher);
+
 				//printf("server get%u[%s]\n", server->buf->len, server->buf->data + server->buf->idx);
 				if (server->stage == STAGE_CLOSE) {
 					if (rkcp->expect_recv_bytes == rkcp->recv_bytes) {
@@ -434,7 +438,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 
 				// has data to send
-				ev_timer_again(EV_A_ & server->watcher);
 				ssize_t s = send(server->fd, server->buf->data + server->buf->idx, server->buf->len, 0);
 				if (s == -1) {
 					if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -481,7 +484,14 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 				local->buf->len += len;
 				rkcp->recv_bytes += len;
+				ev_timer_again(EV_A_ & local->watcher);
+
 				//printf("local get%u[%s]\n", local->buf->len, local->buf->data + local->buf->idx);
+				if (rkcp->recv_stage == STAGE_INIT || !local->send_ctx->connected) {
+					rkcp->recv_stage = STAGE_PAUSE;
+					ev_io_start(EV_A_ & local->send_ctx->io); //start send_ctx
+					return;
+				}
 				if (local->stage == STAGE_CLOSE) {
 					if (rkcp->expect_recv_bytes == rkcp->recv_bytes) {
 						rkcp->recv_stage = STAGE_CLOSE;
@@ -494,7 +504,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 
 				// has data to send
-				ev_timer_again(EV_A_ & local->watcher);
 				ssize_t s = send(local->fd, local->buf->data + local->buf->idx, local->buf->len, 0);
 				if (s == -1) {
 					if (errno != EAGAIN && errno != EWOULDBLOCK) {
