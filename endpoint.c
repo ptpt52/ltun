@@ -612,8 +612,8 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					} while (0);
 
 					//now ready to send
-					rkcp->send_stage = STAGE_STREAM;
-					ev_io_start(EV_A_ & local->recv_ctx->io);
+					//rkcp->send_stage = STAGE_STREAM;
+					//ev_io_start(EV_A_ & local->recv_ctx->io);
 				}
 			}
 		} while(0);
