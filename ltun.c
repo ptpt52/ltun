@@ -258,6 +258,13 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		return;
 	}
 
+	//TODO rkcp full
+	int waitsnd = ikcp_waitsnd(rkcp->kcp);
+	if (waitsnd >= rkcp->kcp->snd_wnd || waitsnd >= rkcp->kcp->rmt_wnd) {
+		rkcp->send_stage = STAGE_PAUSE;
+		ev_io_stop(EV_A_ & local_recv_ctx->io);
+	}
+
 	ssize_t r = recv(local->fd, rkcp->buf->data, BUF_SIZE, 0);
 	if (r == 0) {
 		// connection closed
@@ -284,7 +291,6 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 	rkcp->buf->len = r;
 	ev_timer_again(EV_A_ & local->watcher);
 
-	//TODO rkcp full
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {
 		perror("local_recv: ikcp_send");
@@ -527,6 +533,18 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 	} else {
 		ev_timer_again(EV_A_ & rkcp->watcher);
 	}
+
+	if (rkcp->send_stage == STAGE_PAUSE) {
+		int waitsnd = ikcp_waitsnd(rkcp->kcp);
+		if (waitsnd < rkcp->kcp->snd_wnd && waitsnd < rkcp->kcp->rmt_wnd) {
+			rkcp->send_stage = STAGE_STREAM;
+			if (rkcp->server) {
+				ev_io_start(EV_A_ & rkcp->server->recv_ctx->io);
+			} else if (rkcp->local) {
+				ev_io_start(EV_A_ & rkcp->local->recv_ctx->io);
+			}
+		}
+	}
 }
 
 static void rawkcp_send_close(EV_P_ rawkcp_t *rkcp)
@@ -639,6 +657,13 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 		return;
 	}
 
+	//TODO rkcp full
+	int waitsnd = ikcp_waitsnd(rkcp->kcp);
+	if (waitsnd >= rkcp->kcp->snd_wnd || waitsnd >= rkcp->kcp->rmt_wnd) {
+		rkcp->send_stage = STAGE_PAUSE;
+		ev_io_stop(EV_A_ & server_recv_ctx->io);
+	}
+
 	ssize_t r = recv(server->fd, rkcp->buf->data, BUF_SIZE, 0);
 	if (r == 0) {
 		// connection closed
@@ -665,7 +690,6 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	rkcp->buf->len = r;
 	ev_timer_again(EV_A_ & server->watcher);
 
-	//TODO rkcp full
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {
 		perror("server_recv: ikcp_send");
