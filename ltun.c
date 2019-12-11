@@ -391,6 +391,9 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 				close_and_free_local(EV_A_ local);
 				close_and_free_rawkcp(EV_A_ rkcp);
 			} else {
+				if (verbose) {
+					printf("[kcp]: %s: conv[%u] tx:%u rx:%u start poll\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+				}
 				rkcp->recv_stage = STAGE_POLL;
 			}
 		}
@@ -585,6 +588,9 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 			do {
 				int len = ikcp_recv(rkcp->kcp, (char *)server->buf->data + server->buf->len, BUF_SIZE - server->buf->len);
 				if (len < 0) {
+					if (verbose) {
+						printf("[kcp]: %s: conv[%u] tx:%u rx:%u @server stop poll\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+					}
 					rkcp->recv_stage = STAGE_STREAM;
 					break;
 				}
@@ -645,6 +651,9 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 			do {
 				int len = ikcp_recv(rkcp->kcp, (char *)local->buf->data + local->buf->len, BUF_SIZE - local->buf->len);
 				if (len < 0) {
+					if (verbose) {
+						printf("[kcp]: %s: conv[%u] tx:%u rx:%u @local stop poll\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+					}
 					rkcp->recv_stage = STAGE_STREAM;
 					break;
 				}
@@ -914,6 +923,9 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 				close_and_free_server(EV_A_ server);
 				close_and_free_rawkcp(EV_A_ rkcp);
 			} else {
+				if (verbose) {
+					printf("[kcp]: %s: conv[%u] tx:%u rx:%u start poll\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+				}
 				rkcp->recv_stage = STAGE_POLL;
 			}
 		}
