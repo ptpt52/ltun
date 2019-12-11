@@ -441,6 +441,7 @@ local_t *connect_to_local(EV_P_ __be32 ip, __be16 port)
 	memset(&info, 0, sizeof(struct addrinfo));
 	memset(&storage, 0, sizeof(struct sockaddr_storage));
 	addr = (struct sockaddr_in *)&storage;
+	addr->sin_family = AF_INET;
 	addr->sin_port = port;
 	addr->sin_addr.s_addr = ip;
 
