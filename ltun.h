@@ -13,6 +13,10 @@
 #define SOL_TCP IPPROTO_TCP
 #endif
 
+#ifndef TCP_KEEPIDLE
+#define TCP_KEEPIDLE TCP_KEEPALIVE
+#endif
+
 #define HS_TARGET_HOST 0x0001
 #define HS_TARGET_PORT 0x0002
 
