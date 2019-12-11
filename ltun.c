@@ -50,6 +50,9 @@ char *target_port = "80";
 const char *target_host = "127.0.0.1";
 unsigned char target_mac[6] = {0,0,0,0,0,0};
 
+__be32 _target_ip = 0;
+__be16 _target_port = 0;
+
 unsigned int conn_timeout = 90;
 
 static void signal_cb(EV_P_ ev_signal *w, int revents);
@@ -422,76 +425,62 @@ static local_t *new_local(int fd)
 	return local;
 }
 
-local_t *connect_to_local(EV_P_ const char *host, const char *port)
+local_t *connect_to_local(EV_P_ __be32 ip, __be16 port)
 {
 	local_t *local = NULL;
 	int sockfd = -1;
-	struct addrinfo hints;
-	struct addrinfo *result, *rp;
-	int s;
+	struct sockaddr_in *addr;
+	struct addrinfo *res;
+	struct addrinfo info;
+	struct sockaddr_storage storage;
 
-	memset(&hints, 0, sizeof(struct addrinfo));
-	hints.ai_family   = AF_INET;                 /* Return IPv4 only */
-	hints.ai_socktype = SOCK_STREAM;             /* We want a TCP socket */
-	hints.ai_flags    = AI_PASSIVE | AI_ADDRCONFIG; /* For wildcard IP address */
-	hints.ai_protocol = IPPROTO_TCP;
+	memset(&info, 0, sizeof(struct addrinfo));
+	memset(&storage, 0, sizeof(struct sockaddr_storage));
+	addr = (struct sockaddr_in *)&storage;
+	addr->sin_port = port;
+	addr->sin_addr.s_addr = ip;
 
-	result = NULL;
+	info.ai_family   = AF_INET;
+	info.ai_socktype = SOCK_STREAM;
+	info.ai_protocol = IPPROTO_TCP;
+	info.ai_addrlen  = sizeof(struct sockaddr_in);
+	info.ai_addr     = (struct sockaddr *)addr;
+	res = &info;
 
-	s = getaddrinfo(host, port, &hints, &result);
-	if (s != 0) {
-		printf("getaddrinfo: %s\n", gai_strerror(s));
-		return NULL;
-	}
-
-	if (result == NULL) {
-		printf("Could not getaddrinfo\n");
-		return NULL;
-	}
-
-	rp = result;
-
-	for (/*rp = result*/; rp != NULL; rp = rp->ai_next) {
-		sockfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-		if (sockfd == -1) {
-			continue;
-		}
-
-		// Enable TCP keepalive feature
-		int keepAlive    = 1;
-		int keepIdle     = 40;
-		int keepInterval = 20;
-		int keepCount    = 5;
-		setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepAlive, sizeof(keepAlive));
-		setsockopt(sockfd, SOL_TCP, TCP_KEEPIDLE, (void *)&keepIdle, sizeof(keepIdle));
-		setsockopt(sockfd, SOL_TCP, TCP_KEEPINTVL, (void *)&keepInterval, sizeof(keepInterval));
-		setsockopt(sockfd, SOL_TCP, TCP_KEEPCNT, (void *)&keepCount, sizeof(keepCount));
-
-		int opt = 1;
-		setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
-#ifdef SO_NOSIGPIPE
-		setsockopt(sockfd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
-#endif
-		setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-		if (setnonblocking(sockfd) == -1)
-			perror("setnonblocking");
-
-		int r = connect(sockfd, rp->ai_addr, rp->ai_addrlen);
-		if (r == -1 && errno != EINPROGRESS) {
-			perror("connect_to_local");
-		}
-		break;
-	}
-
-	freeaddrinfo(result);
-
+	sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 	if (sockfd == -1) {
 		perror("socket");
 		return NULL;
 	}
 
+	// Enable TCP keepalive feature
+	int keepAlive    = 1;
+	int keepIdle     = 40;
+	int keepInterval = 20;
+	int keepCount    = 5;
+	setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepAlive, sizeof(keepAlive));
+	setsockopt(sockfd, SOL_TCP, TCP_KEEPIDLE, (void *)&keepIdle, sizeof(keepIdle));
+	setsockopt(sockfd, SOL_TCP, TCP_KEEPINTVL, (void *)&keepInterval, sizeof(keepInterval));
+	setsockopt(sockfd, SOL_TCP, TCP_KEEPCNT, (void *)&keepCount, sizeof(keepCount));
+
+	int opt = 1;
+	setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
+#ifdef SO_NOSIGPIPE
+	setsockopt(sockfd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
+#endif
+	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+	if (setnonblocking(sockfd) == -1)
+		perror("setnonblocking");
+
 	local = new_local(sockfd);
+
+	int r = connect(sockfd, res->ai_addr, res->ai_addrlen);
+	if (r == -1 && errno != EINPROGRESS) {
+		perror("connect_to_local");
+		close_and_free_local(EV_A_ local);
+		return NULL;
+	}
 
 	return local;
 }
@@ -622,14 +611,16 @@ static void rawkcp_send_handshake(EV_P_ rawkcp_t *rkcp)
 	set_byte4(rkcp->buf->data + rkcp->buf->len, htonl(KTUN_P_MAGIC));
 	rkcp->buf->len += 4;
 
-	//set HS_TARGET_HOST
-	n = sprintf((char *)rkcp->buf->data + rkcp->buf->len + 4, "%s", target_host);
-	set_byte2(rkcp->buf->data + rkcp->buf->len, htons(HS_TARGET_HOST));
+	//set HS_TARGET_IP
+	n = sizeof(_target_ip);
+	set_byte4(rkcp->buf->data + rkcp->buf->len + 4, _target_ip);
+	set_byte2(rkcp->buf->data + rkcp->buf->len, htons(HS_TARGET_IP));
 	set_byte2(rkcp->buf->data + rkcp->buf->len + 2, htons(n + 4));
 	rkcp->buf->len += (((n + 4 + 3)>>2)<<2); //4 bytes align
 
 	//set HS_TARGET_PORT
-	n = sprintf((char *)rkcp->buf->data + rkcp->buf->len + 4, "%s", target_port);
+	n = sizeof(_target_port);
+	set_byte2(rkcp->buf->data + rkcp->buf->len + 4, _target_port);
 	set_byte2(rkcp->buf->data + rkcp->buf->len, htons(HS_TARGET_PORT));
 	set_byte2(rkcp->buf->data + rkcp->buf->len + 2, htons(n + 4));
 	rkcp->buf->len += (((n + 4 + 3)>>2)<<2); //4 bytes align
@@ -1065,6 +1056,10 @@ int main(int argc, char **argv)
 	memcpy(endpoint->id, local_mac, 6);
 	printf("local_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", local_mac[0], local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5]);
 	printf("target_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", target_mac[0], target_mac[1], target_mac[2], target_mac[3], target_mac[4], target_mac[5]);
+
+	if (endpoint_getaddrinfo(target_host, target_port, &_target_ip, &_target_port) != 0) {
+		FATAL("endpoint_getaddrinfo error");
+	}
 
 	if (endpoint_getaddrinfo(ktun, "910", &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
 		FATAL("endpoint_getaddrinfo error");

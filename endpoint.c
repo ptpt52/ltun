@@ -550,35 +550,35 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			rkcp->buf->len += len;
 
 			if (rkcp->buf->len >= 4 && get_byte4(rkcp->buf->data) == htonl(KTUN_P_MAGIC)) {
-				const char *host = NULL;
-				const char *port = NULL;
+				__be32 remote_ip = 0;
+				__be16 remote_port = 0;
 				int n = 4;
 
-				if (rkcp->buf->len >= n + 4 && get_byte2(rkcp->buf->data + n) == htons(HS_TARGET_HOST)) {
+				if (rkcp->buf->len >= n + 4 && get_byte2(rkcp->buf->data + n) == htons(HS_TARGET_IP)) {
 					int len = ntohs(get_byte2(rkcp->buf->data + n + 2));
 					if (len >= 4 && rkcp->buf->len >= n + len) {
-						host = (char *)rkcp->buf->data + n + 4;
+						remote_ip = get_byte4(rkcp->buf->data + n + 4);
 						n += (((len + 3)>>2)<<2);
 					}
 				}
 
-				if (!host)
+				if (remote_ip == 0)
 					return;
 
 				if (rkcp->buf->len >= n + 4 && get_byte2(rkcp->buf->data + n) == htons(HS_TARGET_PORT)) {
 					int len = ntohs(get_byte2(rkcp->buf->data + n + 2));
 					if (len >= 4 && rkcp->buf->len >= n + len) {
-						port = (char *)rkcp->buf->data + n + 4;
+						remote_port = get_byte2(rkcp->buf->data + n + 4);
 						n += (((len + 3)>>2)<<2);
 						rkcp->buf->idx += n; //eat the HS data
 					}
 				}
 
-				if (host && port) {
+				if (remote_port != 0) {
 					if (verbose) {
-						printf("do handshake conv[%u], new host=%s port=%s\n", conv, host, port);
+						printf("do handshake conv[%u], new ip=%u.%u.%u.%u port=%u\n", conv, NIPV4_ARG(remote_ip), ntohs(remote_port));
 					}
-					local_t *local = connect_to_local(EV_A_ host, port);
+					local_t *local = connect_to_local(EV_A_ remote_ip, remote_port);
 					if (local == NULL) {
 						//printf("connect error\n");
 						//TODO send close back?
@@ -696,6 +696,7 @@ int endpoint_getaddrinfo(const char *host, const char *port, __be32 *real_addr, 
 	struct addrinfo hints;
 	struct addrinfo *result, *rp;
 	struct sockaddr_in *addr;
+	struct sockaddr_in sa;
 	int s;
 
 	memset(&hints, 0, sizeof(struct addrinfo));
@@ -716,14 +717,9 @@ int endpoint_getaddrinfo(const char *host, const char *port, __be32 *real_addr, 
 		}
 	}
 
-	if (s != 0) {
+	if (s != 0 || result == NULL) {
 		printf("getaddrinfo: %s\n", gai_strerror(s));
-		return -1;
-	}
-
-	if (result == NULL) {
-		printf("Could not \n");
-		return -1;
+		goto try_inet_pton;
 	}
 
 	rp = result;
@@ -734,6 +730,18 @@ int endpoint_getaddrinfo(const char *host, const char *port, __be32 *real_addr, 
 	*real_port = addr->sin_port;
 
 	freeaddrinfo(result);
+
+	return 0;
+
+try_inet_pton:
+	if (1 != inet_pton(AF_INET, host, &(sa.sin_addr))) {
+		printf("inet_pton: fail to convert %s\n", host);
+		return -1;
+	}
+
+	s = atoi(port);
+	*real_port = htons(s);
+	*real_addr = sa.sin_addr.s_addr;
 
 	return 0;
 }

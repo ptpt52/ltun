@@ -19,6 +19,7 @@
 
 #define HS_TARGET_HOST 0x0001
 #define HS_TARGET_PORT 0x0002
+#define HS_TARGET_IP   0x0003
 
 typedef struct listen_ctx_t {
 	ev_io io;
@@ -102,7 +103,7 @@ static inline long itimediff(IUINT32 later, IUINT32 earlier)
 	return ((IINT32)(later - earlier));
 }
 
-extern local_t *connect_to_local(EV_P_ const char *host, const char *port);
+extern local_t *connect_to_local(EV_P_ __be32 ip, __be16 port);
 
 extern void close_and_free_server(EV_P_ server_t *server);
 extern void close_and_free_local(EV_P_ local_t *local);
