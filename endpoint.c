@@ -833,7 +833,7 @@ int endpoint_create_fd(const char *host, const char *port)
 	return listen_sock;
 }
 
-endpoint_t *endpoint_new(int fd)
+endpoint_t *new_endpoint(int fd)
 {
 	endpoint_t *endpoint = malloc(sizeof(endpoint_t));
 	memset(endpoint, 0, sizeof(endpoint_t));
@@ -866,6 +866,57 @@ endpoint_t *endpoint_new(int fd)
 	return endpoint;
 }
 
+static void free_endpoint(endpoint_t *endpoint)
+{
+	if (endpoint->send_ctx->buf) {
+		free(endpoint->send_ctx->buf);
+	}
+	if (endpoint->recv_ctx->buf) {
+		free(endpoint->recv_ctx->buf);
+	}
+	free(endpoint->send_ctx);
+	free(endpoint->recv_ctx);
+	free(endpoint);
+}
+
+void close_and_free_endpoint(EV_P_ endpoint_t *endpoint)
+{
+	if (endpoint != NULL) {
+		ev_io_stop(EV_A_ & endpoint->send_ctx->io);
+		ev_io_stop(EV_A_ & endpoint->recv_ctx->io);
+		ev_timer_stop(EV_A_ & endpoint->watcher);
+		close(endpoint->fd);
+		do {
+			endpoint_buffer_t *pos, *n;
+			dlist_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
+				dlist_del(&pos->list);
+				free(pos);
+			}
+		} while (0);
+
+		do {
+			rawkcp_t *pos;
+			struct hlist_node *n;
+			hlist_for_each_entry_safe(pos, n, &endpoint->rawkcp_head, hnode) {
+				hlist_del_init(&pos->hnode);
+				pos->send_stage = STAGE_ERROR;
+				close_and_free_rawkcp(EV_A_ pos);
+			}
+		} while (0);
+		do {
+			endpoint_buffer_t *pos, *n;
+			dlist_for_each_entry_safe(pos, n, &endpoint->send_ctx->buf_head, list) {
+				dlist_del(&pos->list);
+				free(pos);
+			}
+			dlist_for_each_entry_safe(pos, n, &endpoint->send_ctx->buf_head, list) {
+				dlist_del(&pos->list);
+				free(pos);
+			}
+		} while (0);
+		free_endpoint(endpoint);
+	}
+}
 
 struct hlist_head *peer_hash = NULL;
 unsigned int peer_hash_size = 1024;
@@ -905,6 +956,19 @@ int endpoint_peer_init(void)
 		return -1;
 
 	return 0;
+}
+
+void endpoint_peer_exit(void)
+{
+	int i;
+	for (i = 0; i < peer_hash_size; i++) {
+		peer_t *pos;
+		struct hlist_node *n;
+		hlist_for_each_entry_safe(pos, n, &peer_hash[i], hnode) {
+			hlist_del(&pos->hnode);
+			free(pos);
+		}
+	}
 }
 
 peer_t *endpoint_peer_lookup(unsigned char *id)
@@ -1041,6 +1105,19 @@ int endpoint_peer_pipe_init(void)
 	return 0;
 }
 
+void endpoint_peer_pipe_exit(void)
+{
+	int i;
+	for (i = 0; i < peer_pipe_hash_size; i++) {
+		pipe_t *pos;
+		struct hlist_node *n;
+		hlist_for_each_entry_safe(pos, n, &peer_pipe_hash[i], hnode) {
+			hlist_del(&pos->hnode);
+			free(pos);
+		}
+	}
+}
+
 pipe_t *endpoint_peer_pipe_select(peer_t *peer)
 {
 	return peer->pipe;
@@ -1095,4 +1172,32 @@ int endpoint_peer_pipe_insert(pipe_t *pipe)
 	hlist_add_head(&pipe->hnode, head);
 
 	return 0;
+}
+
+endpoint_t *endpoint_init(EV_P_ const unsigned char *id, const char *ktun, const char *ktun_port)
+{
+	int fd;
+	endpoint_t *endpoint;
+
+	fd = endpoint_create_fd("0.0.0.0", "0");
+	if (fd == -1) {
+		return NULL;
+	}
+	setnonblocking(fd);
+
+	endpoint = new_endpoint(fd);
+	if (endpoint == NULL) {
+		close(fd);
+		return NULL;
+	}
+
+	memcpy(endpoint->id, id, 6);
+
+	if (endpoint_getaddrinfo(ktun, ktun_port, &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
+		close_and_free_endpoint(EV_A_ endpoint);
+		return NULL;
+	}
+	endpoint_ktun_start(endpoint);
+
+	return endpoint;
 }

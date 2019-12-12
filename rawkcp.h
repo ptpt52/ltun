@@ -37,6 +37,7 @@ typedef struct rawkcp_t {
 } rawkcp_t;
 
 extern int __rawkcp_init(void);
+extern void __rawkcp_exit(EV_P);
 extern int rawkcp_insert(rawkcp_t *rkcp);
 
 extern int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user);

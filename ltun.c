@@ -1149,8 +1149,6 @@ void usage()
 
 int main(int argc, char **argv)
 {
-	endpoint_t *endpoint;
-	int fd;
 	int c;
 	char *timeout = NULL;
 
@@ -1258,58 +1256,48 @@ int main(int argc, char **argv)
 		printf("tcp server listening at %s:%s\n", host, local_port);
 	}
 
-	__rawkcp_init();
-	endpoint_peer_init();
 	endpoint_peer_pipe_init();
+	endpoint_peer_init();
+	__rawkcp_init();
 
-	fd = endpoint_create_fd("0.0.0.0", "0");
-	if (fd == -1) {
-		FATAL("endpoint_create_fd error");
-	}
-	setnonblocking(fd);
-	
-	endpoint = endpoint_new(fd);
-	if (endpoint == NULL) {
-		FATAL("endpoint_new error");
-	}
-
-	memcpy(endpoint->id, local_mac, 6);
 	printf("local_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", local_mac[0], local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5]);
 	printf("target_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", target_mac[0], target_mac[1], target_mac[2], target_mac[3], target_mac[4], target_mac[5]);
 
 	if (endpoint_getaddrinfo(target_host, target_port, &_target_ip, &_target_port) != 0) {
-		FATAL("endpoint_getaddrinfo error");
+		//TODO
+		FATAL("endpoint_getaddrinfo");
 	}
-
-	if (endpoint_getaddrinfo(ktun, "910", &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
-		FATAL("endpoint_getaddrinfo error");
+	default_endpoint = endpoint_init(loop, local_mac, ktun, "910");
+	if (default_endpoint == NULL) {
+		//TODO;
+		FATAL("endpoint_getaddrinfo");
 	}
-	printf("ktun_addr=%u.%u.%u.%u ktun_port=%u\n", NIPV4_ARG(endpoint->ktun_addr), ntohs(endpoint->ktun_port));
-
-	endpoint_ktun_start(endpoint);
-
-	default_endpoint = endpoint;
+	printf("ktun_addr=%u.%u.%u.%u ktun_port=%u\n", NIPV4_ARG(default_endpoint->ktun_addr), ntohs(default_endpoint->ktun_port));
 
 	if (geteuid() == 0) {
 		printf("running from root user\n");
 	}
 
 	// start ev loop
-	ev_io_start(loop, &endpoint->recv_ctx->io);
-	ev_timer_start(EV_A_ & endpoint->watcher);
-
+	ev_io_start(loop, &default_endpoint->recv_ctx->io);
+	ev_timer_start(EV_A_ & default_endpoint->watcher);
 	ev_run(loop, 0);
 
 	if (verbose) {
 		printf("closed gracefully\n");
 	}
 
+	close_and_free_endpoint(loop, default_endpoint);
+
+	__rawkcp_exit(loop);
+	endpoint_peer_exit();
+	endpoint_peer_pipe_exit();
+
 	// Clean up
-	do {
+	if (atoi(local_port) != 0) {
 		listen_ctx_t *listen_ctx = &listen_ctx_local;
 		ev_io_stop(loop, &listen_ctx->io);
 		close(listen_ctx->fd);
-	} while(0);
-
+	}
 	return 0;
 }

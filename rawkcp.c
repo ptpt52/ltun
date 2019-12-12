@@ -11,6 +11,7 @@
 #include "jhash.h"
 #include "list.h"
 #include "rawkcp.h"
+#include "ltun.h"
 
 void itimeofday(long *sec, long *usec)
 {
@@ -73,6 +74,20 @@ int __rawkcp_init(void)
 		return -1;
 
 	return 0;
+}
+
+void __rawkcp_exit(EV_P)
+{
+	int i;
+	for (i = 0; i < rawkcp_hash_size; i++) {
+		rawkcp_t *pos;
+		struct hlist_node *n;
+		hlist_for_each_entry_safe(pos, n, &rawkcp_hash[i], hnode) {
+			hlist_del(&pos->hnode);
+			pos->send_stage = STAGE_ERROR;
+			close_and_free_rawkcp(EV_A_ pos);
+		}
+	}
 }
 
 int rawkcp_insert(rawkcp_t *rkcp)
