@@ -163,6 +163,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					printf("[endpoint]: connect to dst=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
 				}
 
+				//[KTUN_P_MAGIC|0x00000003|smac|dmac] smac tell dmac I am connecting to dmac
 				eb->buf.idx = 0;
 				eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
 				set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
@@ -272,6 +273,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						printf("[endpoint]: send reply to @=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
 					}
 
+					//[KTUN_P_MAGIC|0x10000003|smac|dmac] smac reply to dmac connection ok
 					eb->buf.idx = 0;
 					eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
 					set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
@@ -1025,6 +1027,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	eb->addr = endpoint->ktun_addr;
 	eb->port = endpoint->ktun_port;
 
+	//[KTUN_P_MAGIC|0x00000002|smac|dmac] smac tell ktun I want to connect dmac
 	eb->buf.idx = 0;
 	eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
 	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
@@ -1055,6 +1058,7 @@ void endpoint_ktun_start(endpoint_t *endpoint)
 
 	printf("init send to ktun=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
 
+	//[KTUN_P_MAGIC|0x00000001|smac] smac tell ktun I ready here
 	eb->buf.idx = 0;
 	eb->buf_len = eb->buf.len = 4 + 4 + 6;
 	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
@@ -1064,7 +1068,6 @@ void endpoint_ktun_start(endpoint_t *endpoint)
 	eb->recycle = default_eb_recycle;
 	dlist_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
 }
-
 
 
 struct hlist_head *peer_pipe_hash = NULL;
