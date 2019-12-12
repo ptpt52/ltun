@@ -312,7 +312,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			rkcp->expect_recv_bytes = ntohl(nbytes);
 
 			if (verbose) {
-				printf("[close]: %s: conv[%u] get close msg nbytes=%u\n", __func__, conv, rkcp->expect_recv_bytes);
+				printf("[close]: %s: conv[%u] get close fin rx_nbytes=%u\n", __func__, conv, rkcp->expect_recv_bytes);
 			}
 
 			if (rkcp->server) {
