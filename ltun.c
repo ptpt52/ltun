@@ -335,7 +335,14 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 
 			if (local->buf->len == 0) {
 				ev_io_stop(EV_A_ & local_send_ctx->io);
-				rkcp->recv_stage = STAGE_STREAM;
+				if (iqueue_is_empty(&rkcp->kcp->rcv_queue)) {
+					rkcp->recv_stage = STAGE_STREAM;
+				} else {
+					if (verbose) {
+						printf("[kcp]: %s: conv[%u] tx:%u rx:%u start poll\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+					}
+					rkcp->recv_stage = STAGE_POLL;
+				}
 				return;
 			}
 		} else {
