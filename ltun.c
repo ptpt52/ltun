@@ -285,14 +285,6 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 	rkcp->buf->len = r;
 	ev_timer_again(EV_A_ & local->watcher);
 
-	//if rkcp send full
-	int waitsnd = ikcp_waitsnd(rkcp->kcp);
-	if (waitsnd >= rkcp->kcp->snd_wnd || waitsnd >= rkcp->kcp->rmt_wnd) {
-		rkcp->send_stage = STAGE_PAUSE;
-		ev_io_stop(EV_A_ & local_recv_ctx->io);
-		//start rkcp send_ctx
-	}
-
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {
 		perror("local_recv: ikcp_send");
@@ -303,9 +295,20 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		rkcp->buf->idx = 0;
 		rkcp->buf->len = 0;
 	}
-
 	if (!local->recv_ctx->connected) {
 		local->recv_ctx->connected = 1;
+	}
+
+	//if rkcp send full
+	int waitsnd = ikcp_waitsnd(rkcp->kcp);
+	if (waitsnd >= rkcp->kcp->snd_wnd || waitsnd >= rkcp->kcp->rmt_wnd) {
+		ikcp_flush(rkcp->kcp);
+		waitsnd = ikcp_waitsnd(rkcp->kcp);
+		if (waitsnd >= rkcp->kcp->snd_wnd || waitsnd >= rkcp->kcp->rmt_wnd) {
+			rkcp->send_stage = STAGE_PAUSE;
+			ev_io_stop(EV_A_ & local_recv_ctx->io);
+			//start rkcp send_ctx
+		}
 	}
 }
 
@@ -864,14 +867,6 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 	rkcp->buf->len = r;
 	ev_timer_again(EV_A_ & server->watcher);
 
-	//if rkcp send full
-	int waitsnd = ikcp_waitsnd(rkcp->kcp);
-	if (waitsnd >= rkcp->kcp->snd_wnd || waitsnd >= rkcp->kcp->rmt_wnd) {
-		rkcp->send_stage = STAGE_PAUSE;
-		ev_io_stop(EV_A_ & server_recv_ctx->io);
-		//start rkcp send_ctx
-	}
-
 	int s = ikcp_send(rkcp->kcp, (const char *)rkcp->buf->data, rkcp->buf->len);
 	if (s < 0) {
 		perror("server_recv: ikcp_send");
@@ -881,6 +876,18 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 		rkcp->send_bytes += rkcp->buf->len;
 		rkcp->buf->idx = 0;
 		rkcp->buf->len = 0;
+	}
+
+	//if rkcp send full
+	int waitsnd = ikcp_waitsnd(rkcp->kcp);
+	if (waitsnd >= rkcp->kcp->snd_wnd || waitsnd >= rkcp->kcp->rmt_wnd) {
+		ikcp_flush(rkcp->kcp);
+		waitsnd = ikcp_waitsnd(rkcp->kcp);
+		if (waitsnd >= rkcp->kcp->snd_wnd || waitsnd >= rkcp->kcp->rmt_wnd) {
+			rkcp->send_stage = STAGE_PAUSE;
+			ev_io_stop(EV_A_ & server_recv_ctx->io);
+			//start rkcp send_ctx
+		}
 	}
 	return;
 }
