@@ -290,6 +290,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		perror("local_recv: ikcp_send");
 		close_and_free_local(EV_A_ local);
 		close_and_free_rawkcp(EV_A_ rkcp);
+		return;
 	} else {
 		rkcp->send_bytes += rkcp->buf->len;
 		rkcp->buf->idx = 0;
@@ -767,10 +768,10 @@ rawkcp_t *new_rawkcp(unsigned int conv, const unsigned char *remote_id)
 	rkcp->buf->idx = 0;
 
 	rkcp->kcp->output = rawkcp_output;
-	ikcp_wndsize(rkcp->kcp, 256, 256);
+	ikcp_wndsize(rkcp->kcp, 256, 384);
 	ikcp_nodelay(rkcp->kcp, 0, 10, 0, 0);
 
-	rkcp->kcp_max_poll = 256 * rkcp->kcp->mss / BUF_SIZE / 4;
+	rkcp->kcp_max_poll = 384 * rkcp->kcp->mss / BUF_SIZE / 4;
 
 	ev_timer_init(&rkcp->watcher, rawkcp_watcher_cb, 0.1, 0.01);
 
@@ -872,6 +873,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 		perror("server_recv: ikcp_send");
 		close_and_free_server(EV_A_ server);
 		close_and_free_rawkcp(EV_A_ rkcp);
+		return;
 	} else {
 		rkcp->send_bytes += rkcp->buf->len;
 		rkcp->buf->idx = 0;
