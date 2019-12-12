@@ -391,10 +391,14 @@ static void local_send_cb(EV_P_ ev_io *w, int revents)
 				close_and_free_local(EV_A_ local);
 				close_and_free_rawkcp(EV_A_ rkcp);
 			} else {
-				if (verbose) {
-					printf("[kcp]: %s: conv[%u] tx:%u rx:%u start poll\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+				if (iqueue_is_empty(&rkcp->kcp->rcv_queue)) {
+					rkcp->recv_stage = STAGE_STREAM;
+				} else {
+					if (verbose) {
+						printf("[kcp]: %s: conv[%u] tx:%u rx:%u start poll\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+					}
+					rkcp->recv_stage = STAGE_POLL;
 				}
-				rkcp->recv_stage = STAGE_POLL;
 			}
 		}
 	}
@@ -923,10 +927,14 @@ static void server_send_cb(EV_P_ ev_io *w, int revents)
 				close_and_free_server(EV_A_ server);
 				close_and_free_rawkcp(EV_A_ rkcp);
 			} else {
-				if (verbose) {
-					printf("[kcp]: %s: conv[%u] tx:%u rx:%u start poll\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+				if (iqueue_is_empty(&rkcp->kcp->rcv_queue)) {
+					rkcp->recv_stage = STAGE_STREAM;
+				} else {
+					if (verbose) {
+						printf("[kcp]: %s: conv[%u] tx:%u rx:%u start poll\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+					}
+					rkcp->recv_stage = STAGE_POLL;
 				}
-				rkcp->recv_stage = STAGE_POLL;
 			}
 		}
 	}
