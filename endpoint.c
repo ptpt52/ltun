@@ -109,7 +109,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			port = get_byte2(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 4);
 
 			if (verbose) {
-				printf("listen ok: smac=%02X:%02X:%02X:%02X:%02X:%02X ip=%u.%u.%u.%u port=%u\n",
+				printf("[endpoint]: smac=%02X:%02X:%02X:%02X:%02X:%02X src=%u.%u.%u.%u:%u listen ok\n",
 						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5], NIPV4_ARG(ip), ntohs(port));
 			}
 		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10020002)) {
@@ -124,7 +124,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			sport = get_byte2(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 6 + 4);
 
 			if (verbose) {
-				printf("connect ready but not found: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X sip=%u.%u.%u.%u sport=%u\n",
+				printf("[endpoint]: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X src=%u.%u.%u.%u:%u dst= not found\n",
 						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
 						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
 						NIPV4_ARG(sip), ntohs(sport));
@@ -143,7 +143,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			dport = get_byte2(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 6 + 4 + 2 + 4);
 
 			if (verbose) {
-				printf("connect ready and found: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X sip=%u.%u.%u.%u sport=%u dip=%u.%u.%u.%u dport=%u\n",
+				printf("[endpoint]: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X src=%u.%u.%u.%u:%u dst=%u.%u.%u.%u:%u found\n",
 						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
 						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
 						NIPV4_ARG(sip), ntohs(sport), NIPV4_ARG(dip), ntohs(dport));
@@ -160,7 +160,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				eb->port = dport;
 
 				if (verbose) {
-					printf("make connection to peer=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
+					printf("[endpoint]: connect to dst=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
 				}
 
 				eb->buf.idx = 0;
@@ -191,9 +191,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				pipe_t *pipe = NULL;
 
 				if (verbose) {
-					printf("accept in-comming connection smac=%02X:%02X:%02X:%02X:%02X:%02X, dmac=%02X:%02X:%02X:%02X:%02X:%02X\n",
+					printf("[endpoint]: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X from=%u.%u.%u.%u:%u new connection in\n",
 							smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
-							dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
+							dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
+							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 				}
 
 				peer = endpoint_peer_lookup(smac);
@@ -204,7 +205,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					memcpy(peer->id, smac, 6);
 
 					if (verbose) {
-						printf("in-come peer(%02X:%02X:%02X:%02X:%02X:%02X) connected from @%u.%u.%u.%u:%u\n",
+						printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create peer\n",
 								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
 								NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 					}
@@ -230,7 +231,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					}
 
 					if (verbose) {
-						printf("in-come peer(%02X:%02X:%02X:%02X:%02X:%02X) connected create pipe@%u.%u.%u.%u:%u\n",
+						printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create pipe\n",
 								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
 								NIPV4_ARG(pipe->addr), ntohs(pipe->port));
 					}
@@ -268,7 +269,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					eb->port = addr.sin_port;
 
 					if (verbose) {
-						printf("reply connection to peer=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
+						printf("[endpoint]: send reply to @=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
 					}
 
 					eb->buf.idx = 0;
@@ -284,9 +285,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 			} else {
 				//TODO
-				printf("unknown in-comming connection from=%02X:%02X:%02X:%02X:%02X:%02X, to=%02X:%02X:%02X:%02X:%02X:%02X\n",
+				printf("[endpoint]: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X from=%u.%u.%u.%u:%u unknown packet in\n",
 						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
-						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
+						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
+						NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 			}
 		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x006b6370)) {
 			//got close msg from remote, kcp need close
