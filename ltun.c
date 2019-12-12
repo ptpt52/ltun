@@ -1227,6 +1227,13 @@ int main(int argc, char **argv)
 	// initialize ev loop
 	struct ev_loop *loop = EV_DEFAULT;
 
+	printf("local_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", local_mac[0], local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5]);
+	printf("target_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", target_mac[0], target_mac[1], target_mac[2], target_mac[3], target_mac[4], target_mac[5]);
+	if (endpoint_getaddrinfo(target_host, target_port, &_target_ip, &_target_port) != 0) {
+		//TODO
+		FATAL("endpoint_getaddrinfo");
+	}
+
 	// initialize listen context
 	listen_ctx_t listen_ctx_local;
 
@@ -1260,17 +1267,9 @@ int main(int argc, char **argv)
 	endpoint_peer_init();
 	__rawkcp_init();
 
-	printf("local_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", local_mac[0], local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5]);
-	printf("target_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", target_mac[0], target_mac[1], target_mac[2], target_mac[3], target_mac[4], target_mac[5]);
-
-	if (endpoint_getaddrinfo(target_host, target_port, &_target_ip, &_target_port) != 0) {
-		//TODO
-		FATAL("endpoint_getaddrinfo");
-	}
 	default_endpoint = endpoint_init(loop, local_mac, ktun, "910");
 	if (default_endpoint == NULL) {
-		//TODO;
-		FATAL("endpoint_getaddrinfo");
+		goto fail_out;
 	}
 	printf("ktun_addr=%u.%u.%u.%u ktun_port=%u\n", NIPV4_ARG(default_endpoint->ktun_addr), ntohs(default_endpoint->ktun_port));
 
@@ -1288,7 +1287,7 @@ int main(int argc, char **argv)
 	}
 
 	close_and_free_endpoint(loop, default_endpoint);
-
+fail_out:
 	__rawkcp_exit(loop);
 	endpoint_peer_exit();
 	endpoint_peer_pipe_exit();
