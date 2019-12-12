@@ -42,8 +42,8 @@
 
 char *ktun = NULL;
 
-char *local_port = "1080";
-const char *local_host = "0.0.0.0";
+char *local_port = "0";
+const char *local_host = "127.0.0.1";
 unsigned char local_mac[6] = {0,0,0,0,0,0};
 
 char *target_port = "80";
@@ -1233,7 +1233,7 @@ int main(int argc, char **argv)
 	listen_ctx_t listen_ctx_local;
 
 	// bind to each interface
-	do {
+	if (atoi(local_port) != 0) {
 		const char *host = local_host;
 
 		// Bind to port
@@ -1256,7 +1256,7 @@ int main(int argc, char **argv)
 		ev_io_start(loop, &listen_ctx->io);
 
 		printf("tcp server listening at %s:%s\n", host, local_port);
-	} while(0);
+	}
 
 	__rawkcp_init();
 	endpoint_peer_init();
