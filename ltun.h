@@ -112,4 +112,6 @@ extern void close_and_free_rawkcp(EV_P_ rawkcp_t *rkcp);
 
 extern rawkcp_t *new_rawkcp(unsigned int conv, const unsigned char *remote_id);
 
+extern void ltun_call_exit(EV_P);
+
 #endif // _LTUN_H

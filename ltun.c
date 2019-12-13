@@ -1039,6 +1039,14 @@ void close_and_free_server(EV_P_ server_t *server)
 	}
 }
 
+void ltun_call_exit(EV_P)
+{
+	ev_signal_stop(EV_DEFAULT, &sigint_watcher);
+	ev_signal_stop(EV_DEFAULT, &sigterm_watcher);
+	ev_signal_stop(EV_DEFAULT, &sigchld_watcher);
+	ev_unloop(EV_A_ EVUNLOOP_ALL);
+}
+
 static void signal_cb(EV_P_ ev_signal *w, int revents)
 {
 	if (revents & EV_SIGNAL) {
@@ -1047,10 +1055,7 @@ static void signal_cb(EV_P_ ev_signal *w, int revents)
 			return;
 		case SIGINT:
 		case SIGTERM:
-			ev_signal_stop(EV_DEFAULT, &sigint_watcher);
-			ev_signal_stop(EV_DEFAULT, &sigterm_watcher);
-			ev_signal_stop(EV_DEFAULT, &sigchld_watcher);
-			ev_unloop(EV_A_ EVUNLOOP_ALL);
+			ltun_call_exit(EV_A);
 		}
 	}
 }
