@@ -193,7 +193,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4, smac);
 			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4 + 6, dmac);
 			if (memcmp(endpoint->id, dmac, 6) == 0) {
-				int ret;
 				rawkcp_t *pos;
 				struct hlist_node *n;
 				peer_t *peer = NULL;
@@ -208,6 +207,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				peer = endpoint_peer_lookup(smac);
 				if (peer == NULL) {
+					int ret;
 					peer = malloc(sizeof(peer_t));
 					memset(peer, 0, sizeof(peer_t));
 					INIT_HLIST_NODE(&peer->hnode);
@@ -228,18 +228,16 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
 				if (pipe == NULL) {
+					int ret;
 					pipe = new_pipe(addr.sin_addr.s_addr, addr.sin_port, peer);
 					peer->pipe = pipe;
-					if (ret != 0) {
-						close_and_free_pipe(EV_A_ pipe);
-						return;
-					}
 
 					if (verbose) {
 						printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create pipe\n",
 								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
 								NIPV4_ARG(pipe->addr), ntohs(pipe->port));
 					}
+
 					ret = endpoint_peer_pipe_insert(pipe);
 					if (ret != 0) {
 						close_and_free_pipe(EV_A_ pipe);
@@ -282,6 +280,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 
 				hlist_for_each_entry_safe(pos, n, &endpoint->rawkcp_head, hnode) {
+					int ret;
 					if (memcmp(pos->remote_id, smac, 6) == 0) {
 						hlist_del(&pos->hnode);
 						pos->peer = get_peer(peer);
