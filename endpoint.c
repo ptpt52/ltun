@@ -42,6 +42,9 @@
 #define EWOULDBLOCK EAGAIN
 #endif
 
+void close_and_free_pipe(EV_P_ pipe_t *pipe);
+pipe_t *new_pipe(__be32 ip, __be16 port, peer_t *peer);
+
 void default_eb_recycle(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb)
 {
 	if (eb->repeat > 0) {
@@ -223,15 +226,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
 				if (pipe == NULL) {
-					pipe = malloc(sizeof(pipe_t));
-					memset(pipe, 0, sizeof(pipe_t));
-					INIT_HLIST_NODE(&pipe->hnode);
-					pipe->addr = addr.sin_addr.s_addr;
-					pipe->port = addr.sin_port;
-					pipe->peer = peer;
+					pipe = new_pipe(addr.sin_addr.s_addr, addr.sin_port, peer);
 					ret = peer_attach_pipe(peer, pipe);
 					if (ret != 0) {
-						free(pipe);
+						close_and_free_pipe(EV_A_ pipe);
 						return;
 					}
 
@@ -242,11 +240,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					}
 					ret = endpoint_peer_pipe_insert(pipe);
 					if (ret != 0) {
-						free(pipe);
+						close_and_free_pipe(EV_A_ pipe);
 						return;
 					}
 
-					pipe->active_ts = iclock();
 					//trigger keepalive for pipe
 					do {
 						endpoint_buffer_t *eb;
@@ -276,6 +273,8 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 						ev_io_start(EV_A_ & endpoint->send_ctx->io);
 					} while (0);
+
+					ev_timer_start(EV_A_ & pipe->watcher);
 				}
 
 				hlist_for_each_entry_safe(pos, n, &endpoint->rawkcp_head, hnode) {
@@ -340,7 +339,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				peer = endpoint_peer_lookup(smac);
 				pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
 				if (pipe && peer) {
-					pipe->active_ts = iclock();
+					ev_timer_again(EV_A_ & pipe->watcher);
 					if (verbose) {
 						printf("[endpoint]: keepalive from pipe @=%u.%u.%u.%u:%u peer=%02X:%02X:%02X:%02X:%02X:%02X\n",
 								NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port),
@@ -1166,6 +1165,49 @@ void *peer_pipe_alloc_hashtable(unsigned int *sizep)
 	}
 
 	return hash;
+}
+
+static void free_pipe(pipe_t *pipe)
+{
+	hlist_del_init(&pipe->hnode);
+	free(pipe);
+}
+
+void close_and_free_pipe(EV_P_ pipe_t *pipe)
+{
+	if (pipe != NULL) {
+		ev_timer_stop(EV_A_ & pipe->watcher);
+		free_pipe(pipe);
+		if (verbose) {
+			peer_t *peer = pipe->peer;
+			printf("[endpoint]: pipe @=%u.%u.%u.%u:%u peer=%02X:%02X:%02X:%02X:%02X:%02X timeout\n",
+					NIPV4_ARG(pipe->addr), ntohs(pipe->port),
+					peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5]);
+		}
+	}
+}
+
+static void pipe_timeout_cb(EV_P_ ev_timer *watcher, int revents)
+{
+	pipe_t *pipe = container_of(watcher, pipe_t, watcher);
+
+	close_and_free_pipe(EV_A_ pipe);
+}
+
+pipe_t *new_pipe(__be32 ip, __be16 port, peer_t *peer)
+{
+	pipe_t *pipe;
+
+	pipe = malloc(sizeof(pipe_t));
+	memset(pipe, 0, sizeof(pipe_t));
+	INIT_HLIST_NODE(&pipe->hnode);
+	pipe->addr = ip;
+	pipe->port = port;
+	pipe->peer = peer;
+
+	ev_timer_init(&pipe->watcher, pipe_timeout_cb, 30, 30);
+
+	return pipe;
 }
 
 int endpoint_peer_pipe_init(void)
