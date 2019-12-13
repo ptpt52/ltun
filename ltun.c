@@ -552,12 +552,13 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 
 	ev_timer_again(EV_A_ & rkcp->watcher);
 
-	if (rkcp->send_stage == STAGE_CLOSE || rkcp->send_stage == STAGE_INIT) {
+	if (rkcp->send_stage == STAGE_CLOSE || rkcp->recv_stage == STAGE_INIT) {
 		IINT32 slap = itimediff(current, rkcp->close_ts);
 		if (slap >= 10000 || slap <= -10000) {
 			ev_timer_stop(EV_A_ & rkcp->watcher);
 			if (verbose) {
-				printf("[destroy]: %s conv[%u] tx:%u rx:%u\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+				printf("[destroy]: %s conv[%u] tx:%u rx:%u %s timeout\n", __func__,
+						rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, rkcp->recv_stage == STAGE_INIT ? "init" : "close");
 			}
 			free_rawkcp(rkcp);
 		}
