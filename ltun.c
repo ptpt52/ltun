@@ -302,7 +302,7 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 
 	//if rkcp send full
 	int waitsnd = ikcp_waitsnd(rkcp->kcp);
-	if (waitsnd >= rkcp->kcp->snd_wnd || waitsnd >= rkcp->kcp->rmt_wnd) {
+	if (waitsnd >= rkcp->kcp->snd_wnd/4 || waitsnd >= rkcp->kcp->rmt_wnd/4) {
 		ikcp_flush(rkcp->kcp);
 		waitsnd = ikcp_waitsnd(rkcp->kcp);
 		if (waitsnd >= rkcp->kcp->snd_wnd || waitsnd >= rkcp->kcp->rmt_wnd) {
@@ -893,7 +893,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 
 	//if rkcp send full
 	int waitsnd = ikcp_waitsnd(rkcp->kcp);
-	if (waitsnd >= rkcp->kcp->snd_wnd || waitsnd >= rkcp->kcp->rmt_wnd) {
+	if (waitsnd >= rkcp->kcp->snd_wnd/4 || waitsnd >= rkcp->kcp->rmt_wnd/4) {
 		ikcp_flush(rkcp->kcp);
 		waitsnd = ikcp_waitsnd(rkcp->kcp);
 		if (waitsnd >= rkcp->kcp->snd_wnd || waitsnd >= rkcp->kcp->rmt_wnd) {
