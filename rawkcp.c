@@ -143,12 +143,12 @@ int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 
 	pipe = endpoint_peer_pipe_select(rkcp->peer);
 	if (pipe == NULL || pipe->stage != STAGE_STREAM) {
-		printf("no pipe available old=%p\n", rkcp->peer);
 		peer_t *peer = endpoint_peer_lookup(rkcp->remote_id);
 		if (peer) {
-			printf("no pipe available new=%p\n", peer);
 			put_peer(rkcp->peer);
 			rkcp->peer = get_peer(peer);
+		} else {
+			//TODO re-connect-peer
 		}
 		return -1;
 	}
