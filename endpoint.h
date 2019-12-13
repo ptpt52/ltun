@@ -69,13 +69,16 @@ typedef struct endpoint_t {
 
 typedef struct peer_t {
 	struct hlist_node hnode;
+	unsigned int use;
 	unsigned char id[6];
 	struct pipe_t *pipe;
+	struct endpoint_t *endpoint;
 } peer_t;
 
 typedef struct pipe_t {
 	ev_timer watcher;
 	struct hlist_node hnode;
+	int stage;
 	__be32 addr;
 	__be16 port;
 	struct peer_t *peer;
@@ -93,6 +96,20 @@ typedef struct endpoint_buffer_t {
 	int buf_len;
 	struct buffer_t buf;
 } endpoint_buffer_t;
+
+static inline peer_t *get_peer(peer_t *peer)
+{
+	peer->use++;
+	return peer;
+}
+
+static inline void put_peer(peer_t *peer)
+{
+	peer->use--;
+	if (peer->use == 0) {
+		free(peer);
+	}
+}
 
 static inline unsigned char get_byte1(const unsigned char *p)
 {

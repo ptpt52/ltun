@@ -44,6 +44,7 @@
 
 void close_and_free_pipe(EV_P_ pipe_t *pipe);
 pipe_t *new_pipe(__be32 ip, __be16 port, peer_t *peer);
+int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id);
 
 void default_eb_recycle(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb)
 {
@@ -211,6 +212,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					memset(peer, 0, sizeof(peer_t));
 					INIT_HLIST_NODE(&peer->hnode);
 					memcpy(peer->id, smac, 6);
+					peer->endpoint = endpoint;
 
 					if (verbose) {
 						printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create peer\n",
@@ -227,7 +229,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
 				if (pipe == NULL) {
 					pipe = new_pipe(addr.sin_addr.s_addr, addr.sin_port, peer);
-					ret = peer_attach_pipe(peer, pipe);
+					peer->pipe = pipe;
 					if (ret != 0) {
 						close_and_free_pipe(EV_A_ pipe);
 						return;
@@ -274,13 +276,14 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						ev_io_start(EV_A_ & endpoint->send_ctx->io);
 					} while (0);
 
+					pipe->stage = STAGE_STREAM;
 					ev_timer_start(EV_A_ & pipe->watcher);
 				}
 
 				hlist_for_each_entry_safe(pos, n, &endpoint->rawkcp_head, hnode) {
 					if (memcmp(pos->remote_id, smac, 6) == 0) {
 						hlist_del(&pos->hnode);
-						pos->peer = peer;
+						pos->peer = get_peer(peer);
 						pos->endpoint = endpoint;
 						ret = rawkcp_insert(pos);
 						if (ret != 0) {
@@ -431,7 +434,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			if (rkcp == NULL) {
 				return;
 			}
-			rkcp->peer = pipe->peer;
+			rkcp->peer = get_peer(pipe->peer);
 			rkcp->endpoint = endpoint;
 			ret = rawkcp_insert(rkcp);
 			if (ret != 0) {
@@ -1176,12 +1179,6 @@ static void free_pipe(pipe_t *pipe)
 void close_and_free_pipe(EV_P_ pipe_t *pipe)
 {
 	if (pipe != NULL) {
-		if (verbose) {
-			peer_t *peer = pipe->peer;
-			printf("[endpoint]: pipe @=%u.%u.%u.%u:%u peer=%02X:%02X:%02X:%02X:%02X:%02X timeout\n",
-					NIPV4_ARG(pipe->addr), ntohs(pipe->port),
-					peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5]);
-		}
 		ev_timer_stop(EV_A_ & pipe->watcher);
 		free_pipe(pipe);
 	}
@@ -1191,7 +1188,30 @@ static void pipe_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 {
 	pipe_t *pipe = container_of(watcher, pipe_t, watcher);
 
-	close_and_free_pipe(EV_A_ pipe);
+	if (pipe->stage == STAGE_STREAM) {
+		peer_t *peer = pipe->peer;
+		pipe->stage = STAGE_CLOSE;
+		hlist_del_init(&pipe->hnode);
+		peer->pipe = NULL;
+
+		if (verbose) {
+			printf("[endpoint]: %s: pipe @=%u.%u.%u.%u:%u peer=%02X:%02X:%02X:%02X:%02X:%02X timeout detach\n",
+					__func__,
+					NIPV4_ARG(pipe->addr), ntohs(pipe->port),
+					peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5]);
+		}
+
+		endpoint_connect_to_peer(EV_A_ peer->endpoint, peer->id);
+		ev_timer_again(EV_A_ & pipe->watcher);
+	} else {
+		peer_t *peer = pipe->peer;
+		if (peer->pipe == NULL) {
+			//peer conn lost
+			hlist_del_init(&peer->hnode);
+			put_peer(peer);
+		}
+		close_and_free_pipe(EV_A_ pipe);
+	}
 }
 
 pipe_t *new_pipe(__be32 ip, __be16 port, peer_t *peer)
@@ -1204,6 +1224,7 @@ pipe_t *new_pipe(__be32 ip, __be16 port, peer_t *peer)
 	pipe->addr = ip;
 	pipe->port = port;
 	pipe->peer = peer;
+	peer->use++;
 
 	ev_timer_init(&pipe->watcher, pipe_timeout_cb, 30, 30);
 
@@ -1237,18 +1258,6 @@ void endpoint_peer_pipe_exit(void)
 pipe_t *endpoint_peer_pipe_select(peer_t *peer)
 {
 	return peer->pipe;
-}
-
-int peer_attach_pipe(peer_t *peer, pipe_t *pipe)
-{
-	if (peer->pipe) {
-		peer->pipe->peer = NULL;
-		hlist_del(&peer->pipe->hnode);
-		free(peer->pipe);
-		peer->pipe = NULL;
-	}
-	peer->pipe = pipe;
-	return 0;
 }
 
 pipe_t *endpoint_peer_pipe_lookup(__be32 addr, __be16 port)

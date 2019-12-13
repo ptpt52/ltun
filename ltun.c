@@ -87,7 +87,7 @@ int rawkcp_attach_endpoint(EV_P_ rawkcp_t *rkcp, endpoint_t *endpoint)
 	peer = endpoint_peer_lookup(rkcp->remote_id);
 
 	if (peer != NULL) {
-		rkcp->peer = peer;
+		rkcp->peer = get_peer(peer);
 		rkcp->endpoint = endpoint;
 		ret = rawkcp_insert(rkcp);
 		if (ret != 0) {
@@ -530,6 +530,9 @@ static void free_rawkcp(rawkcp_t *rkcp)
 	}
 	if (rkcp->buf != NULL) {
 		free(rkcp->buf);
+	}
+	if (rkcp->peer) {
+		put_peer(rkcp->peer);
 	}
 	free(rkcp);
 }
