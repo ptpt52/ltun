@@ -114,6 +114,8 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				printf("[endpoint]: smac=%02X:%02X:%02X:%02X:%02X:%02X src=%u.%u.%u.%u:%u listen ok\n",
 						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5], NIPV4_ARG(ip), ntohs(port));
 			}
+
+			endpoint->active_ts = iclock();
 		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10020002)) {
 			//0x10020002: resp=1, ret=002, code=0002 connect ready but not found: smac, dmac, sip, sport, 0, 0
 			unsigned char smac[6], dmac[6];
@@ -687,7 +689,7 @@ static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 
 		dlist_del(&pos->list);
 		endpoint_buffer_recycle(EV_A_ endpoint, pos);
-		if (++count == 16)
+		if (++count == 64)
 			break;
 	}
 
@@ -702,6 +704,16 @@ static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 	int need_send = 0;
 	endpoint_buffer_t *pos, *n;
 	endpoint_t *endpoint = (endpoint_t *)watcher;
+
+	if (endpoint->stage == STAGE_ERROR) {
+		ltun_call_exit(EV_A);
+		return;
+	}
+
+	IINT32 slap = itimediff(iclock(), endpoint->active_ts);
+	if (slap >= 40000 || slap <= -40000) {
+		printf("[endpoint] no respose from ktun for %us\n", slap/1000);
+	}
 
 	dlist_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
 		if (pos->interval > 0 && (endpoint->ticks % pos->interval) != 0) {
@@ -863,6 +875,8 @@ endpoint_t *new_endpoint(int fd)
 	endpoint->fd = fd;
 	endpoint->recv_ctx->endpoint = endpoint;
 	endpoint->send_ctx->endpoint = endpoint;
+
+	endpoint->active_ts = iclock();
 	
 	ev_io_init(&endpoint->recv_ctx->io, endpoint_recv_cb, endpoint->fd, EV_READ);
 	ev_io_init(&endpoint->send_ctx->io, endpoint_send_cb, endpoint->fd, EV_WRITE);

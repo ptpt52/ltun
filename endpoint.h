@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include "list.h"
+#include "ikcp.h"
 
 # if __BYTE_ORDER == __LITTLE_ENDIAN
 
@@ -47,6 +48,9 @@ typedef struct endpoint_ctx {
 
 typedef struct endpoint_t {
 	ev_timer watcher;
+
+	IUINT32 active_ts;
+	int stage;
 
 	int fd;
 	int ticks;

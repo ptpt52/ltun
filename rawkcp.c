@@ -164,6 +164,7 @@ int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 		if (s == -1) {
 			if (errno != EAGAIN && errno != EWOULDBLOCK) {
 				//TODO connection error
+				rkcp->endpoint->stage = STAGE_ERROR;
 				return -1;
 			}
 		}
