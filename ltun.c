@@ -778,8 +778,8 @@ rawkcp_t *new_rawkcp(unsigned int conv, const unsigned char *remote_id)
 	rkcp->kcp->output = rawkcp_output;
 	ikcp_wndsize(rkcp->kcp, 512, 768);
 	ikcp_nodelay(rkcp->kcp, 1, 10, 2, 1);
-	rkcp->kcp->rx_minrto = 10;
-	rkcp->kcp->fastresend = 1;
+	//rkcp->kcp->rx_minrto = 10;
+	//rkcp->kcp->fastresend = 1;
 
 	rkcp->kcp_max_poll = 512 * rkcp->kcp->mss / BUF_SIZE / 2;
 
