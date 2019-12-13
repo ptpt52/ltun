@@ -536,18 +536,19 @@ static void free_rawkcp(rawkcp_t *rkcp)
 
 static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 {
-	IUINT32 ticks_next;
 	IUINT32 current = iclock();
 	rawkcp_t *rkcp = (rawkcp_t *)watcher;
 
 	if (rkcp->kcp) {
 		ikcp_update(rkcp->kcp, current);
-		ticks_next = ikcp_check(rkcp->kcp, current);
+#if 0
+		IUINT32 ticks_next = ikcp_check(rkcp->kcp, iclock());
 		if (ticks_next - current > 0) {
 			watcher->repeat = (ticks_next - current) / 1000.0;
 		} else {
 			watcher->repeat = 10.0 / 1000.0;
 		}
+#endif
 	}
 
 	ev_timer_again(EV_A_ & rkcp->watcher);
