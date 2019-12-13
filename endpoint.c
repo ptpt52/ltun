@@ -268,7 +268,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						eb->buf.idx = 0;
 						eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
 						set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
-						set_byte4(eb->buf.data + 4, htonl(0x10000004));
+						set_byte4(eb->buf.data + 4, htonl(0x00000004));
 						set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
 						set_byte6(eb->buf.data + 4 + 4 + 6, peer->id); //dmac
 
