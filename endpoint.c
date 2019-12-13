@@ -1210,6 +1210,9 @@ static void pipe_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 		if (peer->pipe == NULL) {
 			//peer conn lost
 			hlist_del_init(&peer->hnode);
+			//the last try
+			endpoint_connect_to_peer(EV_A_ peer->endpoint, peer->id);
+			//free
 			put_peer(peer);
 		}
 		close_and_free_pipe(EV_A_ pipe);
