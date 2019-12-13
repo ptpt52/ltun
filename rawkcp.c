@@ -149,6 +149,7 @@ int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 			rkcp->peer = get_peer(peer);
 		} else {
 			//TODO re-connect-peer
+			printf("not connect to remote_id\n");
 		}
 		return -1;
 	}
