@@ -1176,14 +1176,14 @@ static void free_pipe(pipe_t *pipe)
 void close_and_free_pipe(EV_P_ pipe_t *pipe)
 {
 	if (pipe != NULL) {
-		ev_timer_stop(EV_A_ & pipe->watcher);
-		free_pipe(pipe);
 		if (verbose) {
 			peer_t *peer = pipe->peer;
 			printf("[endpoint]: pipe @=%u.%u.%u.%u:%u peer=%02X:%02X:%02X:%02X:%02X:%02X timeout\n",
 					NIPV4_ARG(pipe->addr), ntohs(pipe->port),
 					peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5]);
 		}
+		ev_timer_stop(EV_A_ & pipe->watcher);
+		free_pipe(pipe);
 	}
 }
 
