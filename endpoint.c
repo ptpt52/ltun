@@ -753,6 +753,7 @@ static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 
 static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 {
+	IINT32 slap;
 	int need_send = 0;
 	endpoint_buffer_t *pos, *n;
 	endpoint_t *endpoint = (endpoint_t *)watcher;
@@ -762,7 +763,7 @@ static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 		return;
 	}
 
-	IINT32 slap = itimediff(iclock(), endpoint->active_ts);
+	slap = itimediff(iclock(), endpoint->active_ts);
 	if (slap >= 40000 || slap <= -40000) {
 		printf("[endpoint] no respose from ktun for %us\n", slap/1000);
 	}
