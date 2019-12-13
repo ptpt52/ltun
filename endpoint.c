@@ -256,6 +256,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 						eb->repeat = -1;
 						eb->interval = 10;
+						eb->recycle = default_eb_recycle;
 						eb->addr = pipe->addr;
 						eb->port = pipe->port;
 
@@ -269,7 +270,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
 						set_byte4(eb->buf.data + 4, htonl(0x10000004));
 						set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
-						set_byte6(eb->buf.data + 4 + 4 + 6, smac); //dmac
+						set_byte6(eb->buf.data + 4 + 4 + 6, peer->id); //dmac
 
 						dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
@@ -1116,6 +1117,7 @@ void endpoint_ktun_start(endpoint_t *endpoint)
 	eb->endpoint = endpoint;
 	eb->repeat = -1;
 	eb->interval = 10;
+	eb->recycle = default_eb_recycle;
 	eb->addr = endpoint->ktun_addr;
 	eb->port = endpoint->ktun_port;
 
@@ -1128,7 +1130,6 @@ void endpoint_ktun_start(endpoint_t *endpoint)
 	set_byte4(eb->buf.data + 4, htonl(0x00000001));
 	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
 
-	eb->recycle = default_eb_recycle;
 	dlist_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
 }
 
