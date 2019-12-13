@@ -334,13 +334,17 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4, smac);
 			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4 + 6, dmac);
 			if (memcmp(endpoint->id, dmac, 6) == 0) {
+				peer_t *peer = NULL;
 				pipe_t *pipe = NULL;
 
+				peer = endpoint_peer_lookup(smac);
 				pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
-				if (pipe) {
+				if (pipe && peer) {
 					pipe->active_ts = iclock();
 					if (verbose) {
-						printf("[endpoint]: keepalive from pipe @=%u.%u.%u.%u:%u\n", NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+						printf("[endpoint]: keepalive from pipe @=%u.%u.%u.%u:%u peer=%02X:%02X:%02X:%02X:%02X:%02X\n",
+								NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port),
+								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5]);
 					}
 				}
 			}
