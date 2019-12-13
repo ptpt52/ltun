@@ -536,17 +536,25 @@ static void free_rawkcp(rawkcp_t *rkcp)
 
 static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 {
+	IUINT32 ticks_next;
 	IUINT32 current = iclock();
 	rawkcp_t *rkcp = (rawkcp_t *)watcher;
 
 	if (rkcp->kcp) {
 		ikcp_update(rkcp->kcp, current);
+		ticks_next = ikcp_check(rkcp->kcp, current);
+		if (ticks_next - current > 0) {
+			watcher->repeat = (ticks_next - current) / 1000.0;
+		} else {
+			watcher->repeat = 10.0 / 1000.0;
+		}
 	}
 
-	if (rkcp->send_stage == STAGE_CLOSE) {
-		int waitsnd = ikcp_waitsnd(rkcp->kcp);
+	ev_timer_again(EV_A_ & rkcp->watcher);
+
+	if (rkcp->send_stage == STAGE_CLOSE || rkcp->send_stage == STAGE_INIT) {
 		IINT32 slap = itimediff(current, rkcp->close_ts);
-		if (slap >= 10000 || slap <= -10000  || waitsnd == 0) {
+		if (slap >= 10000 || slap <= -10000) {
 			ev_timer_stop(EV_A_ & rkcp->watcher);
 			if (verbose) {
 				printf("[destroy]: %s conv[%u] tx:%u rx:%u\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
@@ -555,8 +563,6 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 		}
 		return;
 	}
-
-	ev_timer_again(EV_A_ & rkcp->watcher);
 
 	if (rkcp->send_stage == STAGE_PAUSE) {
 		int waitsnd = ikcp_waitsnd(rkcp->kcp);
@@ -775,6 +781,7 @@ rawkcp_t *new_rawkcp(unsigned int conv, const unsigned char *remote_id)
 
 	rkcp->kcp_max_poll = 512 * rkcp->kcp->mss / BUF_SIZE / 2;
 
+	rkcp->close_ts = iclock();
 	ev_timer_init(&rkcp->watcher, rawkcp_watcher_cb, 0.1, 0.01);
 
 	return rkcp;
