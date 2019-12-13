@@ -132,29 +132,26 @@ rawkcp_t *rawkcp_lookup(unsigned int conv, const unsigned char *remote_id)
 int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	rawkcp_t *rkcp = (rawkcp_t *)user;
+	peer_t *peer = rkcp->peer;
 	pipe_t *pipe;
 
-	if (rkcp->peer == NULL)
-		return -1;
+	if (peer) {
+		pipe = endpoint_peer_pipe_select(rkcp->peer);
+	}
+
 	if (rkcp->endpoint == NULL)
 		return -1;
 
-	//printf("rawkcp_output len=%u\n", len);
-
-	pipe = endpoint_peer_pipe_select(rkcp->peer);
-	if (pipe == NULL || pipe->stage != STAGE_STREAM) {
-		peer_t *peer = endpoint_peer_lookup(rkcp->remote_id);
+	if (peer == NULL || pipe == NULL || pipe->stage != STAGE_STREAM) {
+		peer = endpoint_peer_lookup(rkcp->remote_id);
 		if (peer) {
-			put_peer(rkcp->peer);
+			if (rkcp->peer) put_peer(rkcp->peer);
 			rkcp->peer = get_peer(peer);
 		} else {
 			//TODO re-connect-peer
 		}
 		return -1;
 	}
-
-	//TODO
-	//return pipe->output();
 
 	do {
 		struct sockaddr_in addr;
