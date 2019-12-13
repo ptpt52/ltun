@@ -273,6 +273,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 						dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
+						pipe->eb = eb;
 						ev_io_start(EV_A_ & endpoint->send_ctx->io);
 					} while (0);
 
@@ -1193,6 +1194,8 @@ static void pipe_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 		pipe->stage = STAGE_CLOSE;
 		hlist_del_init(&pipe->hnode);
 		peer->pipe = NULL;
+		pipe->eb->repeat = 0;
+		pipe->eb->interval = 0;
 
 		if (verbose) {
 			printf("[endpoint]: %s: pipe @=%u.%u.%u.%u:%u peer=%02X:%02X:%02X:%02X:%02X:%02X timeout detach\n",

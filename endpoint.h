@@ -82,6 +82,7 @@ typedef struct pipe_t {
 	__be32 addr;
 	__be16 port;
 	struct peer_t *peer;
+	struct endpoint_buffer_t *eb;
 } pipe_t;
 
 typedef struct endpoint_buffer_t {
