@@ -75,6 +75,7 @@ typedef struct peer_t {
 
 typedef struct pipe_t {
 	struct hlist_node hnode;
+	IUINT32 active_ts;
 	__be32 addr;
 	__be16 port;
 	struct peer_t *peer;

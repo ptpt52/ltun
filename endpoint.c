@@ -245,6 +245,36 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						free(pipe);
 						return;
 					}
+
+					pipe->active_ts = iclock();
+					//trigger keepalive for pipe
+					do {
+						endpoint_buffer_t *eb;
+
+						eb = malloc(sizeof(endpoint_buffer_t));
+						memset(eb, 0, sizeof(endpoint_buffer_t));
+
+						eb->repeat = -1;
+						eb->interval = 10;
+						eb->addr = pipe->addr;
+						eb->port = pipe->port;
+
+						if (verbose) {
+							printf("[endpoint]: trigger keepalive for pipe @=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
+						}
+
+						//[KTUN_P_MAGIC|0x10000004|smac|dmac] smac reply to dmac connection ok
+						eb->buf.idx = 0;
+						eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
+						set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
+						set_byte4(eb->buf.data + 4, htonl(0x10000004));
+						set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
+						set_byte6(eb->buf.data + 4 + 4 + 6, smac); //dmac
+
+						dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
+
+						ev_io_start(EV_A_ & endpoint->send_ctx->io);
+					} while (0);
 				}
 
 				hlist_for_each_entry_safe(pos, n, &endpoint->rawkcp_head, hnode) {
@@ -295,6 +325,23 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
 						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
 						NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+			}
+		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000004)) {
+			//got 0x00000004 keep alive
+			unsigned char smac[6], dmac[6];
+
+			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4, smac);
+			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4 + 6, dmac);
+			if (memcmp(endpoint->id, dmac, 6) == 0) {
+				pipe_t *pipe = NULL;
+
+				pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
+				if (pipe) {
+					pipe->active_ts = iclock();
+					if (verbose) {
+						printf("[endpoint]: keepalive from pipe @=%u.%u.%u.%u:%u\n", NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+					}
+				}
 			}
 		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x006b6370)) {
 			//got close msg from remote, kcp need close
