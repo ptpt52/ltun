@@ -413,9 +413,11 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						printf("[close]: %s: conv[%u] tx:%u rx:%u @server\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
 					}
 					close_and_free_server(EV_A_ server);
+					close_and_free_rawkcp(EV_A_ rkcp);
+				} else {
+					rkcp->send_stage = STAGE_RESET; //wait to close
+					close_and_free_rawkcp(EV_A_ rkcp);
 				}
-				rkcp->send_stage = STAGE_RESET; //wait to close
-				close_and_free_rawkcp(EV_A_ rkcp);
 				return;
 			}
 			if (rkcp->local) {
@@ -429,9 +431,11 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						printf("[close]: %s: conv[%u] tx:%u rx:%u @local\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
 					}
 					close_and_free_local(EV_A_ local);
+					close_and_free_rawkcp(EV_A_ rkcp);
+				} else {
+					rkcp->send_stage = STAGE_RESET; //wait to close
+					close_and_free_rawkcp(EV_A_ rkcp);
 				}
-				rkcp->send_stage = STAGE_RESET; //wait to close
-				close_and_free_rawkcp(EV_A_ rkcp);
 				return;
 			}
 		} else {
