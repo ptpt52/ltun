@@ -299,7 +299,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 
 				//reply to smac
-				if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000003)) {
+				if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000003) || get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000002)) {
 					endpoint_buffer_t *eb;
 
 					eb = malloc(sizeof(endpoint_buffer_t));
