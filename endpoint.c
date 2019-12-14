@@ -769,7 +769,9 @@ static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 
 	slap = itimediff(iclock(), endpoint->active_ts);
 	if (slap >= 40000 || slap <= -40000) {
-		printf("[endpoint] no respose from ktun for %us\n", slap/1000);
+		if ( (slap/1000 > -60 && slap/1000 < 60) || ((int)(slap/1000)%10 == 0)) {
+			printf("[endpoint] no respose from ktun for %ds\n", slap/1000);
+		}
 	}
 
 	dlist_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
