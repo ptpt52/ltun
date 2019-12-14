@@ -68,6 +68,8 @@ static void server_timeout_cb(EV_P_ ev_timer *watcher, int revents);
 static server_t *new_server(int fd, listen_ctx_t *listener);
 static rawkcp_t *connect_to_rawkcp(EV_P_ unsigned char *remote_id);
 
+static void rawkcp_send_close(EV_P_ rawkcp_t *rkcp);
+
 endpoint_t *default_endpoint = NULL;
 
 int endpoint_attach_rawkcp(EV_P_ endpoint_t *endpoint, rawkcp_t *rkcp)
@@ -569,19 +571,28 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 
 	ev_timer_again(EV_A_ & rkcp->watcher);
 
-	if (rkcp->send_stage == STAGE_CLOSE || rkcp->recv_stage == STAGE_INIT) {
-		if (rkcp->recv_stage == STAGE_INIT) {
-			if (rkcp->server || rkcp->local) {
-				return;
+	if (rkcp->send_stage == STAGE_CLOSE) {
+		IINT32 slap = itimediff(current, rkcp->close_ts);
+		if (slap >= 10000 || slap <= -10000) {
+			ev_timer_stop(EV_A_ & rkcp->watcher);
+			if (verbose) {
+				printf("[destroy]: %s conv[%u] tx:%u rx:%u close timeout\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
 			}
+			free_rawkcp(rkcp);
+		}
+		return;
+	}
+	if (rkcp->recv_stage == STAGE_INIT) {
+		if (rkcp->server || rkcp->local) {
+			return;
 		}
 		IINT32 slap = itimediff(current, rkcp->close_ts);
 		if (slap >= 10000 || slap <= -10000) {
 			ev_timer_stop(EV_A_ & rkcp->watcher);
 			if (verbose) {
-				printf("[destroy]: %s conv[%u] tx:%u rx:%u %s timeout\n", __func__,
-						rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes, rkcp->recv_stage == STAGE_INIT ? "init" : "close");
+				printf("[destroy]: %s conv[%u] tx:%u rx:%u init timeout\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
 			}
+			rawkcp_send_close(EV_A_ rkcp);
 			free_rawkcp(rkcp);
 		}
 		return;
