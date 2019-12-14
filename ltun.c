@@ -797,15 +797,17 @@ static void rawkcp_send_close(EV_P_ rawkcp_t *rkcp)
 void close_and_free_rawkcp(EV_P_ rawkcp_t *rkcp)
 {
 	if (rkcp) {
-		if (rkcp->send_stage != STAGE_CLOSE) {
+		if (rkcp->send_stage == STAGE_CLOSE) {
+			rkcp->close_ts = iclock();
+			rawkcp_send_close(EV_A_ rkcp);
+		} else if (rkcp->send_stage == STAGE_RESET) {
+			rkcp->close_ts = iclock();
+		} else {
 			ev_timer_stop(EV_A_ & rkcp->watcher);
 			if (verbose) {
 				printf("[destroy]: %s conv[%u] tx:%u rx:%u\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
 			}
 			free_rawkcp(rkcp);
-		} else {
-			rkcp->close_ts = iclock();
-			rawkcp_send_close(EV_A_ rkcp);
 		}
 	}
 }
