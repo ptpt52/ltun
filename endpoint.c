@@ -325,6 +325,8 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 					ev_io_start(EV_A_ & endpoint->send_ctx->io);
 				}
+			} else if (memcmp(endpoint->id, smac, 6) == 0) {
+				//silence
 			} else {
 				//TODO dmac no me
 				if (verbose) {
