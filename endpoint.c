@@ -325,11 +325,13 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					ev_io_start(EV_A_ & endpoint->send_ctx->io);
 				}
 			} else {
-				//TODO
-				printf("[endpoint]: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X from=%u.%u.%u.%u:%u unknown packet in\n",
-						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
-						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
-						NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+				//TODO dmac no me
+				if (verbose) {
+					printf("[endpoint]: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X from=%u.%u.%u.%u:%u unknown packet in\n",
+							smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
+							dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
+							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+				}
 			}
 		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000004)) {
 			//got 0x00000004 keep alive
