@@ -42,6 +42,7 @@
 #define EWOULDBLOCK EAGAIN
 #endif
 
+void pipe_timeout_call(EV_P_ pipe_t *pipe);
 void close_and_free_pipe(EV_P_ pipe_t *pipe);
 pipe_t *new_pipe(__be32 ip, __be16 port, peer_t *peer);
 int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id);
@@ -354,6 +355,25 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					}
 				}
 			}
+		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x106b6370)) {
+			//got reset-kcp-pipe from remote
+			int conv;
+			rawkcp_t *rkcp;
+			pipe_t *pipe;
+
+			conv = get_byte4(endpoint_recv_ctx->buf->data + 8);
+			conv = ntohl(conv);
+
+			pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
+			if (pipe == NULL) {
+				return;
+			}
+			rkcp = rawkcp_lookup(conv, pipe->peer->id);
+			if (rkcp == NULL) {
+				return;
+			}
+
+			pipe_timeout_call(EV_A_ pipe);
 		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x006b6370)) {
 			//got close msg from remote, kcp need close
 			int conv;
@@ -368,7 +388,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			if (pipe == NULL) {
 				return;
 			}
-
 			rkcp = rawkcp_lookup(conv, pipe->peer->id);
 			if (rkcp == NULL) {
 				return;
@@ -428,7 +447,31 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 		pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
 		if (pipe == NULL) {
-			//printf("endpoint_peer_pipe_lookup no pipe conv=%u\n", conv);
+			if (verbose) {
+				printf("[kcp] %s: conv[%u] endpoint_peer_pipe_lookup fail @=%u.%u.%u.%u:%u\n",
+						__func__, conv, NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+			}
+			//send pipe reset
+			do {
+				endpoint_buffer_t *eb;
+
+				eb = malloc(sizeof(endpoint_buffer_t));
+				memset(eb, 0, sizeof(endpoint_buffer_t));
+
+				eb->addr = addr.sin_addr.s_addr;
+				eb->port = addr.sin_port;
+
+				//[KTUN_P_MAGIC|0x10000003|reset-kcp-pipe|conv] reply reset-kcp
+				eb->buf.idx = 0;
+				eb->buf_len = eb->buf.len = 4 + 4 + 4;
+				set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
+				set_byte4(eb->buf.data + 4, htonl(0x106b6370)); // reset kcp pipe
+				set_byte4(eb->buf.data + 4 + 4, htonl(conv)); //conv
+
+				dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
+
+				ev_io_start(EV_A_ & endpoint->send_ctx->io);
+			} while (0);
 			return;
 		}
 		rkcp = rawkcp_lookup(conv, pipe->peer->id);
@@ -450,7 +493,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 		int ret = ikcp_input(rkcp->kcp, (const char *)endpoint_recv_ctx->buf->data, endpoint_recv_ctx->buf->len);
 		if (ret < 0) {
-			printf("[kcp]: %s: conv[%u] ikcp_input failed [%d]\n", __func__, conv, ret);
+			if (verbose) {
+				printf("[kcp]: %s: conv[%u] ikcp_input failed [%d]\n", __func__, conv, ret);
+			}
+			return;
 		}
 
 		if (rkcp->server) {
@@ -1218,10 +1264,8 @@ void close_and_free_pipe(EV_P_ pipe_t *pipe)
 	}
 }
 
-static void pipe_timeout_cb(EV_P_ ev_timer *watcher, int revents)
+void pipe_timeout_call(EV_P_ pipe_t *pipe)
 {
-	pipe_t *pipe = container_of(watcher, pipe_t, watcher);
-
 	if (pipe->stage == STAGE_STREAM) {
 		peer_t *peer = pipe->peer;
 		pipe->stage = STAGE_CLOSE;
@@ -1251,6 +1295,12 @@ static void pipe_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 		}
 		close_and_free_pipe(EV_A_ pipe);
 	}
+}
+
+static void pipe_timeout_cb(EV_P_ ev_timer *watcher, int revents)
+{
+	pipe_t *pipe = container_of(watcher, pipe_t, watcher);
+	pipe_timeout_call(EV_A_ pipe);
 }
 
 pipe_t *new_pipe(__be32 ip, __be16 port, peer_t *peer)
