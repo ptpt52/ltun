@@ -557,6 +557,11 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 	ev_timer_again(EV_A_ & rkcp->watcher);
 
 	if (rkcp->send_stage == STAGE_CLOSE || rkcp->recv_stage == STAGE_INIT) {
+		if (rkcp->recv_stage == STAGE_INIT) {
+			if (rkcp->server || rkcp->local) {
+				return;
+			}
+		}
 		IINT32 slap = itimediff(current, rkcp->close_ts);
 		if (slap >= 10000 || slap <= -10000) {
 			ev_timer_stop(EV_A_ & rkcp->watcher);
