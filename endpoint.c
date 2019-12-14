@@ -889,6 +889,12 @@ int endpoint_create_fd(const char *host, const char *port)
 #ifdef SO_NOSIGPIPE
 		setsockopt(listen_sock, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
 #endif
+		/* Set socket to allow broadcast */
+		s = setsockopt(listen_sock, SOL_SOCKET, SO_BROADCAST, &opt, sizeof(opt));
+		if (s < 0) {
+			perror("broadcast permission");
+		}
+
 		s = bind(listen_sock, rp->ai_addr, rp->ai_addrlen);
 		if (s == 0) {
 			/* We managed to bind successfully! */
@@ -1089,6 +1095,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 {
 	endpoint_buffer_t *eb;
 
+	//send to ktun
 	eb = malloc(sizeof(endpoint_buffer_t));
 	memset(eb, 0, sizeof(endpoint_buffer_t));
 
@@ -1097,6 +1104,27 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	eb->repeat = 30;
 	eb->addr = endpoint->ktun_addr;
 	eb->port = endpoint->ktun_port;
+
+	//[KTUN_P_MAGIC|0x00000002|smac|dmac] smac tell ktun I want to connect dmac
+	eb->buf.idx = 0;
+	eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
+	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
+	set_byte4(eb->buf.data + 4, htonl(0x00000002));
+	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
+	set_byte6(eb->buf.data + 4 + 4 + 6, id); //dmac
+
+	eb->recycle = default_eb_recycle;
+	dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
+
+	//send to broadcast
+	eb = malloc(sizeof(endpoint_buffer_t));
+	memset(eb, 0, sizeof(endpoint_buffer_t));
+
+	memcpy(eb->dmac, id, 6);
+	eb->endpoint = endpoint;
+	eb->repeat = 30;
+	eb->addr = endpoint->broadcast_addr;
+	eb->port = endpoint->broadcast_port;
 
 	//[KTUN_P_MAGIC|0x00000002|smac|dmac] smac tell ktun I want to connect dmac
 	eb->buf.idx = 0;
@@ -1304,7 +1332,7 @@ int endpoint_peer_pipe_insert(pipe_t *pipe)
 	return 0;
 }
 
-endpoint_t *endpoint_init(EV_P_ const unsigned char *id, const char *ktun, const char *ktun_port)
+endpoint_t *endpoint_init(EV_P_ const unsigned char *id, const char *ktun, const char *ktun_port, const char *bktun, const char *bktun_port)
 {
 	int fd;
 	endpoint_t *endpoint;
@@ -1324,6 +1352,10 @@ endpoint_t *endpoint_init(EV_P_ const unsigned char *id, const char *ktun, const
 	memcpy(endpoint->id, id, 6);
 
 	if (endpoint_getaddrinfo(ktun, ktun_port, &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
+		close_and_free_endpoint(EV_A_ endpoint);
+		return NULL;
+	}
+	if (endpoint_getaddrinfo(bktun, bktun_port, &endpoint->broadcast_addr, &endpoint->broadcast_port) != 0) {
 		close_and_free_endpoint(EV_A_ endpoint);
 		return NULL;
 	}

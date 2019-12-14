@@ -40,7 +40,10 @@
 #define MAXCONN 1024
 #endif
 
-char *ktun = NULL;
+char *ktun = "ec1ns.ptpt52.com";
+char *ktun_port = "910";
+char *bktun = "255.255.255.255";
+char *bktun_port = "1910";
 
 char *local_port = "0";
 const char *local_host = "127.0.0.1";
@@ -1291,11 +1294,12 @@ int main(int argc, char **argv)
 	endpoint_peer_init();
 	__rawkcp_init();
 
-	default_endpoint = endpoint_init(loop, local_mac, ktun, "910");
+	default_endpoint = endpoint_init(loop, local_mac, ktun, ktun_port, bktun, bktun_port);
 	if (default_endpoint == NULL) {
 		goto fail_out;
 	}
 	printf("ktun_addr=%u.%u.%u.%u ktun_port=%u\n", NIPV4_ARG(default_endpoint->ktun_addr), ntohs(default_endpoint->ktun_port));
+	printf("bktun_addr=%u.%u.%u.%u bktun_port=%u\n", NIPV4_ARG(default_endpoint->broadcast_addr), ntohs(default_endpoint->broadcast_port));
 
 	if (geteuid() == 0) {
 		printf("running from root user\n");
