@@ -69,6 +69,7 @@ typedef struct local_t {
 #define STAGE_POLL       3  /* Poll data stream                 */
 #define STAGE_STREAM     6  /* Stream between client and server */
 #define STAGE_CLOSE      7  /* Stream closed                    */
+#define STAGE_RESET      8  /* Stream reset                     */
 
 #ifndef container_of
 #define container_of(ptr, type, member) ({                      \

@@ -582,6 +582,22 @@ static void rawkcp_watcher_cb(EV_P_ ev_timer *watcher, int revents)
 		}
 		return;
 	}
+	if (rkcp->send_stage == STAGE_RESET) {
+		IINT32 slap = itimediff(current, rkcp->close_ts);
+		if (slap >= 10000 || slap <= -10000) {
+			ev_timer_stop(EV_A_ & rkcp->watcher);
+			if (verbose) {
+				printf("[destroy]: %s conv[%u] tx:%u rx:%u reset timeout\n", __func__, rkcp->conv, rkcp->send_bytes, rkcp->recv_bytes);
+			}
+			if (rkcp->server)
+				close_and_free_server(EV_A_ rkcp->server);
+			if (rkcp->local)
+				close_and_free_local(EV_A_ rkcp->local);
+			free_rawkcp(rkcp);
+		}
+		return;
+	}
+
 	if (rkcp->recv_stage == STAGE_INIT) {
 		if (rkcp->server || rkcp->local) {
 			return;
