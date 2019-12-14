@@ -203,11 +203,16 @@ static unsigned int rawkcp_conv_alloc(int type)
 	/* conv low range [1,0x7fffffff]
 	 * conv high range [0x80000001,0xffffffff]
 	 */
-	static unsigned int conv_low  = 0x00000001;
-	static unsigned int conv_high = 0x80000001;
+	static unsigned int conv_low  = 0x00000000;
+	static unsigned int conv_high = 0x80000000;
 	unsigned int conv;
 
 	if (type != 0) {
+		if (conv_high == 0x80000000) {
+			conv_high = rand() % 0x80000000 + 0x80000000;
+			if (conv_high == 0x80000000 || ikcp_encode32u_value(conv_high) == htonl(KTUN_P_MAGIC))
+				conv_high = (conv_high + 1) % 0x80000000 + 0x80000000;
+		}
 		conv = conv_high;
 		conv_high = (conv_high + 1) % 0x80000000 + 0x80000000;
 		if (conv_high == 0x80000000 || ikcp_encode32u_value(conv_high) == htonl(KTUN_P_MAGIC))
@@ -215,6 +220,11 @@ static unsigned int rawkcp_conv_alloc(int type)
 		return conv;
 	}
 
+	if (conv_low == 0x00000000) {
+		conv_low = rand() % 0x80000000;
+		if (conv_low == 0 || ikcp_encode32u_value(conv_low) == htonl(KTUN_P_MAGIC))
+			conv_low = (conv_low + 1) % 0x80000000;
+	}
 	conv = conv_low;
 	conv_low = (conv_low + 1) % 0x80000000;
 	if (conv_low == 0 || ikcp_encode32u_value(conv_low) == htonl(KTUN_P_MAGIC))
@@ -1178,6 +1188,8 @@ int main(int argc, char **argv)
 {
 	int c;
 	char *timeout = NULL;
+
+    srand(time(NULL));
 
 	opterr = 0;
 
