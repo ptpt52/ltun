@@ -89,14 +89,14 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 	if (r == 0) {
 		ev_io_stop(EV_A_ & endpoint_recv_ctx->io);
-		ltun_call_exit(EV_A);
+		endpoint->stage = STAGE_ERROR;
 		return;
 	} else if (r == -1) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
 			return;
 		} else {
 			ev_io_stop(EV_A_ & endpoint_recv_ctx->io);
-			ltun_call_exit(EV_A);
+			endpoint->stage = STAGE_ERROR;
 			return;
 		}
 	}
