@@ -184,8 +184,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				ev_io_start(EV_A_ & endpoint->send_ctx->io);
 			} while (0);
 		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000003) ||
+				get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000002) ||
 				get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10000003)) {
 			//got 0x00000003 connection ready.
+			//got 0x00000002 someone want to connect, direct connect ok
 			//or got 0x10000003 connection reply
 			//0x00000003: in-comming connection: smac, dmac
 			unsigned char smac[6], dmac[6];
@@ -1337,7 +1339,7 @@ endpoint_t *endpoint_init(EV_P_ const unsigned char *id, const char *ktun, const
 	int fd;
 	endpoint_t *endpoint;
 
-	fd = endpoint_create_fd("0.0.0.0", "0");
+	fd = endpoint_create_fd("0.0.0.0", bktun_port);
 	if (fd == -1) {
 		return NULL;
 	}
