@@ -514,7 +514,7 @@ local_t *connect_to_local(EV_P_ __be32 ip, __be16 port)
 #ifdef SO_NOSIGPIPE
 	setsockopt(sockfd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
 #endif
-	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+	//setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
 	if (setnonblocking(sockfd) == -1)
 		perror("setnonblocking");
