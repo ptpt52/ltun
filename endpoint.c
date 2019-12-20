@@ -520,6 +520,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				if (server->buf->len >= 4) {
 					if (get_byte4(server->buf->data) == htonl(KTUN_P_MAGIC)) {
+						int opt = 0;
+						setsockopt(server->fd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt)); //Disable TCP_NODELAY after the first response
+
 						rkcp->recv_stage = STAGE_STREAM;
 						server->buf->idx += 4;
 						server->buf->len -= 4;

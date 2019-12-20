@@ -312,6 +312,8 @@ static void local_recv_cb(EV_P_ ev_io *w, int revents)
 		rkcp->buf->len = 0;
 	}
 	if (!local->recv_ctx->connected) {
+		int opt = 0;
+		setsockopt(local->fd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
 		local->recv_ctx->connected = 1;
 	}
 
