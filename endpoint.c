@@ -777,11 +777,6 @@ static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 		ssize_t s;
 		struct sockaddr_in addr;
 
-		if (pos->start_timeout != 0) {
-			pos->start_timeout--;
-			continue;
-		}
-
 		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
 		addr.sin_addr.s_addr = pos->addr;
@@ -839,6 +834,10 @@ static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 	}
 
 	dlist_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
+		if (pos->start_timeout != 0) {
+			pos->start_timeout--;
+			continue;
+		}
 		if (pos->interval > 0 && (endpoint->ticks % pos->interval) != 0) {
 			continue;
 		}
@@ -1183,7 +1182,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	set_byte6(eb->buf.data + 4 + 4 + 6, id); //dmac
 
 	eb->recycle = default_eb_recycle;
-	dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
+	dlist_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
 
 	//send to broadcast
 	eb = malloc(sizeof(endpoint_buffer_t));
