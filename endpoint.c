@@ -774,6 +774,11 @@ static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 		ssize_t s;
 		struct sockaddr_in addr;
 
+		if (pos->start_timeout != 0) {
+			pos->start_timeout--;
+			continue;
+		}
+
 		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
 		addr.sin_addr.s_addr = pos->addr;
@@ -1161,6 +1166,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 
 	memcpy(eb->dmac, id, 6);
 	eb->endpoint = endpoint;
+	eb->start_timeout = 5; //start send to ktun after 5s
 	eb->repeat = 30;
 	eb->addr = endpoint->ktun_addr;
 	eb->port = endpoint->ktun_port;
@@ -1182,6 +1188,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 
 	memcpy(eb->dmac, id, 6);
 	eb->endpoint = endpoint;
+	eb->start_timeout = 0; //start send broadcast now
 	eb->repeat = 30;
 	eb->addr = endpoint->broadcast_addr;
 	eb->port = endpoint->broadcast_port;
