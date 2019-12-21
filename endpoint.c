@@ -86,7 +86,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 	endpoint_ctx_t *endpoint_recv_ctx = (endpoint_ctx_t *)w;
 	endpoint_t *endpoint = endpoint_recv_ctx->endpoint;
 
-	ssize_t r = recvfrom(endpoint->fd, endpoint_recv_ctx->buf->data, BUF_SIZE, 0, (struct sockaddr*) &addr, (socklen_t *) &addr_len);
+	ssize_t r = recvfrom(endpoint->fd, endpoint->buf->data, BUF_SIZE, 0, (struct sockaddr*) &addr, (socklen_t *) &addr_len);
 
 	if (r == 0) {
 		ev_io_stop(EV_A_ & endpoint_recv_ctx->io);
@@ -102,18 +102,18 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 		}
 	}
 
-	endpoint_recv_ctx->buf->len = r;
+	endpoint->buf->len = r;
 
-	if (endpoint_recv_ctx->buf->len >= 8 && get_byte4(endpoint_recv_ctx->buf->data) == htonl(KTUN_P_MAGIC)) {
-		if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10020001)) {
+	if (endpoint->buf->len >= 8 && get_byte4(endpoint->buf->data) == htonl(KTUN_P_MAGIC)) {
+		if (get_byte4(endpoint->buf->data + 4) == htonl(0x10020001)) {
 			//0x10020001: resp=1, ret=002, code=0001 listen ok:   smac, ip, port
 			unsigned char smac[6];
 			__be32 ip;
 			__be16 port;
 
-			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4, smac);
-			ip   = get_byte4(endpoint_recv_ctx->buf->data + 4 + 4 + 6);
-			port = get_byte2(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 4);
+			get_byte6(endpoint->buf->data + 4 + 4, smac);
+			ip   = get_byte4(endpoint->buf->data + 4 + 4 + 6);
+			port = get_byte2(endpoint->buf->data + 4 + 4 + 6 + 4);
 
 			if (verbose) {
 				printf("[endpoint]: smac=%02X:%02X:%02X:%02X:%02X:%02X src=%u.%u.%u.%u:%u listen ok\n",
@@ -121,16 +121,16 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			}
 
 			endpoint->active_ts = iclock();
-		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10020002)) {
+		} else if (get_byte4(endpoint->buf->data + 4) == htonl(0x10020002)) {
 			//0x10020002: resp=1, ret=002, code=0002 connect ready but not found: smac, dmac, sip, sport, 0, 0
 			unsigned char smac[6], dmac[6];
 			__be32 sip;
 			__be16 sport;
 
-			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4, smac);
-			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4 + 6, dmac);
-			sip   = get_byte4(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 6);
-			sport = get_byte2(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 6 + 4);
+			get_byte6(endpoint->buf->data + 4 + 4, smac);
+			get_byte6(endpoint->buf->data + 4 + 4 + 6, dmac);
+			sip   = get_byte4(endpoint->buf->data + 4 + 4 + 6 + 6);
+			sport = get_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4);
 
 			if (verbose) {
 				printf("[endpoint]: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X src=%u.%u.%u.%u:%u dst= not found\n",
@@ -138,18 +138,18 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
 						NIPV4_ARG(sip), ntohs(sport));
 			}
-		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10030002)) {
+		} else if (get_byte4(endpoint->buf->data + 4) == htonl(0x10030002)) {
 			//0x10030002: resp=1, ret=003, code=0002 connect ready and found:     smac, dmac, sip, sport, dip, dport
 			unsigned char smac[6], dmac[6];
 			__be32 sip, dip;
 			__be16 sport, dport;
 
-			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4, smac);
-			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4 + 6, dmac);
-			sip   = get_byte4(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 6);
-			sport = get_byte2(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 6 + 4);
-			dip   = get_byte4(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 6 + 4 + 2);
-			dport = get_byte2(endpoint_recv_ctx->buf->data + 4 + 4 + 6 + 6 + 4 + 2 + 4);
+			get_byte6(endpoint->buf->data + 4 + 4, smac);
+			get_byte6(endpoint->buf->data + 4 + 4 + 6, dmac);
+			sip   = get_byte4(endpoint->buf->data + 4 + 4 + 6 + 6);
+			sport = get_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4);
+			dip   = get_byte4(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2);
+			dport = get_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2 + 4);
 
 			if (verbose) {
 				printf("[endpoint]: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X src=%u.%u.%u.%u:%u dst=%u.%u.%u.%u:%u found\n",
@@ -184,17 +184,17 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				ev_io_start(EV_A_ & endpoint->send_ctx->io);
 			} while (0);
-		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000003) ||
-				get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000002) ||
-				get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x10000003)) {
+		} else if (get_byte4(endpoint->buf->data + 4) == htonl(0x00000003) ||
+				get_byte4(endpoint->buf->data + 4) == htonl(0x00000002) ||
+				get_byte4(endpoint->buf->data + 4) == htonl(0x10000003)) {
 			//got 0x00000003 connection ready.
 			//got 0x00000002 someone want to connect, direct connect ok
 			//or got 0x10000003 connection reply
 			//0x00000003: in-comming connection: smac, dmac
 			unsigned char smac[6], dmac[6];
 
-			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4, smac);
-			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4 + 6, dmac);
+			get_byte6(endpoint->buf->data + 4 + 4, smac);
+			get_byte6(endpoint->buf->data + 4 + 4 + 6, dmac);
 			if (memcmp(endpoint->id, dmac, 6) == 0) {
 				rawkcp_t *pos;
 				struct hlist_node *n;
@@ -300,7 +300,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 
 				//reply to smac
-				if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000003) || get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000002)) {
+				if (get_byte4(endpoint->buf->data + 4) == htonl(0x00000003) || get_byte4(endpoint->buf->data + 4) == htonl(0x00000002)) {
 					endpoint_buffer_t *eb;
 
 					eb = malloc(sizeof(endpoint_buffer_t));
@@ -336,12 +336,12 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 				}
 			}
-		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x00000004)) {
+		} else if (get_byte4(endpoint->buf->data + 4) == htonl(0x00000004)) {
 			//got 0x00000004 keep alive
 			unsigned char smac[6], dmac[6];
 
-			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4, smac);
-			get_byte6(endpoint_recv_ctx->buf->data + 4 + 4 + 6, dmac);
+			get_byte6(endpoint->buf->data + 4 + 4, smac);
+			get_byte6(endpoint->buf->data + 4 + 4 + 6, dmac);
 			if (memcmp(endpoint->id, dmac, 6) == 0) {
 				peer_t *peer = NULL;
 				pipe_t *pipe = NULL;
@@ -357,13 +357,13 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					}
 				}
 			}
-		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x106b6370)) {
+		} else if (get_byte4(endpoint->buf->data + 4) == htonl(0x106b6370)) {
 			//got reset-kcp-pipe from remote
 			int conv;
 			rawkcp_t *rkcp;
 			pipe_t *pipe;
 
-			conv = get_byte4(endpoint_recv_ctx->buf->data + 8);
+			conv = get_byte4(endpoint->buf->data + 8);
 			conv = ntohl(conv);
 
 			pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
@@ -376,14 +376,14 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			}
 
 			pipe_timeout_call(EV_A_ pipe);
-		} else if (get_byte4(endpoint_recv_ctx->buf->data + 4) == htonl(0x006b6370)) {
+		} else if (get_byte4(endpoint->buf->data + 4) == htonl(0x006b6370)) {
 			//got close msg from remote, kcp need close
 			int conv;
 			unsigned int nbytes;
 			rawkcp_t *rkcp;
 			pipe_t *pipe;
 
-			conv = get_byte4(endpoint_recv_ctx->buf->data + 8);
+			conv = get_byte4(endpoint->buf->data + 8);
 			conv = ntohl(conv);
 
 			pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
@@ -395,7 +395,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				return;
 			}
 
-			nbytes = get_byte4(endpoint_recv_ctx->buf->data + 12);
+			nbytes = get_byte4(endpoint->buf->data + 12);
 			rkcp->expect_recv_bytes = ntohl(nbytes);
 
 			if (verbose) {
@@ -440,7 +440,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			}
 		} else {
 			//unknown KTUN code
-			printf("unknown KTUN code=0x%08x\n", get_byte4(endpoint_recv_ctx->buf->data + 4));
+			printf("unknown KTUN code=0x%08x\n", get_byte4(endpoint->buf->data + 4));
 			//TODO
 		}
 	//end KTUN_P_MAGIC
@@ -449,7 +449,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 		rawkcp_t *rkcp;
 		pipe_t *pipe;
 
-		conv = ikcp_getconv(endpoint_recv_ctx->buf->data);
+		conv = ikcp_getconv(endpoint->buf->data);
 
 		//printf("endpoint: recv msg: conv=%u from=%u.%u.%u.%u:%u\n", conv, NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 
@@ -499,7 +499,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			ev_timer_start(EV_A_ & rkcp->watcher);
 		}
 
-		int ret = ikcp_input(rkcp->kcp, (const char *)endpoint_recv_ctx->buf->data, endpoint_recv_ctx->buf->len);
+		int ret = ikcp_input(rkcp->kcp, (const char *)endpoint->buf->data, endpoint->buf->len);
 		if (ret < 0) {
 			if (verbose) {
 				printf("[kcp]: %s: conv[%u] ikcp_input failed [%d]\n", __func__, conv, ret);
@@ -986,18 +986,16 @@ endpoint_t *new_endpoint(int fd)
 	INIT_DLIST_HEAD(&endpoint->watcher_send_buf_head);
 	INIT_HLIST_HEAD(&endpoint->rawkcp_head);
 
+	endpoint->buf = malloc(sizeof(buffer_t));
+	endpoint->buf->len = 0;
+	endpoint->buf->idx = 0;
+
 	endpoint->recv_ctx = malloc(sizeof(endpoint_ctx_t));
 	memset(endpoint->recv_ctx, 0, sizeof(endpoint_ctx_t));
-	endpoint->recv_ctx->buf = malloc(sizeof(buffer_t));
-	endpoint->recv_ctx->buf->len = 0;
-	endpoint->recv_ctx->buf->idx = 0;
 	INIT_DLIST_HEAD(&endpoint->recv_ctx->buf_head);
 
 	endpoint->send_ctx = malloc(sizeof(endpoint_ctx_t));
 	memset(endpoint->send_ctx, 0, sizeof(endpoint_ctx_t));
-	endpoint->send_ctx->buf = malloc(sizeof(buffer_t));
-	endpoint->send_ctx->buf->len = 0;
-	endpoint->send_ctx->buf->idx = 0;
 	INIT_DLIST_HEAD(&endpoint->send_ctx->buf_head);
 
 	endpoint->fd = fd;
@@ -1016,11 +1014,8 @@ endpoint_t *new_endpoint(int fd)
 
 static void free_endpoint(endpoint_t *endpoint)
 {
-	if (endpoint->send_ctx->buf) {
-		free(endpoint->send_ctx->buf);
-	}
-	if (endpoint->recv_ctx->buf) {
-		free(endpoint->recv_ctx->buf);
+	if (endpoint->buf) {
+		free(endpoint->buf);
 	}
 	free(endpoint->send_ctx);
 	free(endpoint->recv_ctx);

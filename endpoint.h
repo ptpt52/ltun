@@ -40,7 +40,6 @@ typedef struct buffer_t {
 
 typedef struct endpoint_ctx {
 	ev_io io;
-	buffer_t *buf;
 
 	struct endpoint_t *endpoint;
 	struct dlist_head buf_head;
@@ -60,6 +59,8 @@ typedef struct endpoint_t {
 	__be16 ktun_port;
 	__be32 broadcast_addr;
 	__be16 broadcast_port;
+
+	buffer_t *buf;
 
 	struct endpoint_ctx *recv_ctx;
 	struct endpoint_ctx *send_ctx;
