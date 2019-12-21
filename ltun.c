@@ -1349,6 +1349,7 @@ int main(int argc, char **argv)
 	}
 
 	// start ev loop
+	ev_io_start(loop, &default_endpoint->broadcast_recv_ctx->io);
 	ev_io_start(loop, &default_endpoint->recv_ctx->io);
 	ev_timer_start(EV_A_ & default_endpoint->watcher);
 	ev_run(loop, 0);

@@ -82,21 +82,27 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 {
 	struct sockaddr_in addr;
 	int addr_len = sizeof(addr);
+	int fd;
 
-	endpoint_ctx_t *endpoint_recv_ctx = (endpoint_ctx_t *)w;
-	endpoint_t *endpoint = endpoint_recv_ctx->endpoint;
+	endpoint_ctx_t *recv_ctx = (endpoint_ctx_t *)w;
+	endpoint_t *endpoint = recv_ctx->endpoint;
 
-	ssize_t r = recvfrom(endpoint->fd, endpoint->buf->data, BUF_SIZE, 0, (struct sockaddr*) &addr, (socklen_t *) &addr_len);
+	fd = endpoint->fd;
+	if ((&endpoint->broadcast_recv_ctx->io) == w) {
+		fd = endpoint->broadcast_fd;
+	}
+
+	ssize_t r = recvfrom(fd, endpoint->buf->data, BUF_SIZE, 0, (struct sockaddr*) &addr, (socklen_t *) &addr_len);
 
 	if (r == 0) {
-		ev_io_stop(EV_A_ & endpoint_recv_ctx->io);
+		ev_io_stop(EV_A_ w);
 		endpoint->stage = STAGE_ERROR;
 		return;
 	} else if (r == -1) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
 			return;
 		} else {
-			ev_io_stop(EV_A_ & endpoint_recv_ctx->io);
+			ev_io_stop(EV_A_ w);
 			endpoint->stage = STAGE_ERROR;
 			return;
 		}
@@ -979,7 +985,7 @@ int endpoint_create_fd(const char *host, const char *port)
 	return listen_sock;
 }
 
-endpoint_t *new_endpoint(int fd)
+endpoint_t *new_endpoint(int fd, int broadcast_fd)
 {
 	endpoint_t *endpoint = malloc(sizeof(endpoint_t));
 	memset(endpoint, 0, sizeof(endpoint_t));
@@ -990,6 +996,10 @@ endpoint_t *new_endpoint(int fd)
 	endpoint->buf->len = 0;
 	endpoint->buf->idx = 0;
 
+	endpoint->broadcast_recv_ctx = malloc(sizeof(endpoint_ctx_t));
+	memset(endpoint->broadcast_recv_ctx, 0, sizeof(endpoint_ctx_t));
+	INIT_DLIST_HEAD(&endpoint->broadcast_recv_ctx->buf_head);
+
 	endpoint->recv_ctx = malloc(sizeof(endpoint_ctx_t));
 	memset(endpoint->recv_ctx, 0, sizeof(endpoint_ctx_t));
 	INIT_DLIST_HEAD(&endpoint->recv_ctx->buf_head);
@@ -998,12 +1008,15 @@ endpoint_t *new_endpoint(int fd)
 	memset(endpoint->send_ctx, 0, sizeof(endpoint_ctx_t));
 	INIT_DLIST_HEAD(&endpoint->send_ctx->buf_head);
 
+	endpoint->broadcast_fd = broadcast_fd;
 	endpoint->fd = fd;
+	endpoint->broadcast_recv_ctx->endpoint = endpoint;
 	endpoint->recv_ctx->endpoint = endpoint;
 	endpoint->send_ctx->endpoint = endpoint;
 
 	endpoint->active_ts = iclock();
 	
+	ev_io_init(&endpoint->broadcast_recv_ctx->io, endpoint_recv_cb, endpoint->broadcast_fd, EV_READ);
 	ev_io_init(&endpoint->recv_ctx->io, endpoint_recv_cb, endpoint->fd, EV_READ);
 	ev_io_init(&endpoint->send_ctx->io, endpoint_send_cb, endpoint->fd, EV_WRITE);
 
@@ -1027,8 +1040,10 @@ void close_and_free_endpoint(EV_P_ endpoint_t *endpoint)
 	if (endpoint != NULL) {
 		ev_io_stop(EV_A_ & endpoint->send_ctx->io);
 		ev_io_stop(EV_A_ & endpoint->recv_ctx->io);
+		ev_io_stop(EV_A_ & endpoint->broadcast_recv_ctx->io);
 		ev_timer_stop(EV_A_ & endpoint->watcher);
 		close(endpoint->fd);
+		close(endpoint->broadcast_fd);
 		do {
 			endpoint_buffer_t *pos, *n;
 			dlist_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
@@ -1036,7 +1051,6 @@ void close_and_free_endpoint(EV_P_ endpoint_t *endpoint)
 				free(pos);
 			}
 		} while (0);
-
 		do {
 			rawkcp_t *pos;
 			struct hlist_node *n;
@@ -1048,10 +1062,16 @@ void close_and_free_endpoint(EV_P_ endpoint_t *endpoint)
 		} while (0);
 		do {
 			endpoint_buffer_t *pos, *n;
-			dlist_for_each_entry_safe(pos, n, &endpoint->send_ctx->buf_head, list) {
+			/* XXX: we never use recv_ctx->buf_head
+			dlist_for_each_entry_safe(pos, n, &endpoint->broadcast_recv_ctx->buf_head, list) {
 				dlist_del(&pos->list);
 				free(pos);
 			}
+			dlist_for_each_entry_safe(pos, n, &endpoint->recv_ctx->buf_head, list) {
+				dlist_del(&pos->list);
+				free(pos);
+			}
+			*/
 			dlist_for_each_entry_safe(pos, n, &endpoint->send_ctx->buf_head, list) {
 				dlist_del(&pos->list);
 				free(pos);
@@ -1403,16 +1423,25 @@ int endpoint_peer_pipe_insert(pipe_t *pipe)
 endpoint_t *endpoint_init(EV_P_ const unsigned char *id, const char *ktun, const char *ktun_port, const char *bktun, const char *bktun_port)
 {
 	int fd;
+	int bktun_fd;
 	endpoint_t *endpoint;
 
-	fd = endpoint_create_fd("0.0.0.0", bktun_port);
+	fd = endpoint_create_fd("0.0.0.0", "0");
 	if (fd == -1) {
 		return NULL;
 	}
 	setnonblocking(fd);
 
-	endpoint = new_endpoint(fd);
+	bktun_fd = endpoint_create_fd("0.0.0.0", bktun_port);
+	if (bktun_fd == -1) {
+		close(fd);
+		return NULL;
+	}
+	setnonblocking(bktun_fd);
+
+	endpoint = new_endpoint(fd, bktun_fd);
 	if (endpoint == NULL) {
+		close(bktun_fd);
 		close(fd);
 		return NULL;
 	}

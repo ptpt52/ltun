@@ -52,6 +52,7 @@ typedef struct endpoint_t {
 	int stage;
 
 	int fd;
+	int broadcast_fd;
 	int ticks;
 	unsigned char id[6];
 
@@ -62,6 +63,7 @@ typedef struct endpoint_t {
 
 	buffer_t *buf;
 
+	struct endpoint_ctx *broadcast_recv_ctx;
 	struct endpoint_ctx *recv_ctx;
 	struct endpoint_ctx *send_ctx;
 	struct dlist_head watcher_send_buf_head;
