@@ -1216,7 +1216,14 @@ static void usage()
 }
 
 #ifdef LTUN_LIB
-int ltun_init_start(char *s_local_host, char *s_local_port, char *s_local_mac,
+void ltun_service_stop(int pid)
+{
+	if (pid > 0) {
+		kill(pid, SIGTERM);
+	}
+}
+
+int ltun_service_start(char *s_local_host, char *s_local_port, char *s_local_mac,
 		char *s_target_host, char *s_target_port, char *s_target_mac,
 		char *s_timeout, char *s_ktun, int i_verbose)
 #else
@@ -1228,6 +1235,16 @@ int main(int argc, char **argv)
     srand(time(NULL));
 
 #ifdef LTUN_LIB
+	pid_t p;
+
+	p = fork();
+	if (p < 0) {
+		return p;
+	} else if (p > 0) {
+		//Parent process, return child pid
+		return p;
+	}
+
 	local_host = s_local_host;
 	local_port = s_local_port;
 	if (s_local_mac) {

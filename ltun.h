@@ -116,9 +116,11 @@ extern rawkcp_t *new_rawkcp(unsigned int conv, const unsigned char *remote_id);
 extern void ltun_call_exit(EV_P);
 
 #ifdef LTUN_LIB
-extern int ltun_init_start(char *s_local_host, char *s_local_port, char *s_local_mac,
+extern int ltun_service_start(char *s_local_host, char *s_local_port, char *s_local_mac,
 		char *s_target_host, char *s_target_port, char *s_target_mac,
 		char *s_timeout, char *s_ktun, int i_verbose);
+
+extern void ltun_service_stop(int pid);
 #endif
 
 #endif // _LTUN_H
