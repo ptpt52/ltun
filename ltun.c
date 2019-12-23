@@ -1196,7 +1196,7 @@ static void parse_optarg_mac(unsigned char *mac, const char *optarg)
 	}
 }
 
-void usage()
+static void usage()
 {
 	printf("\n");
 	printf("ltun %s\n\n", "1.0");
@@ -1215,15 +1215,35 @@ void usage()
 	printf("\n");
 }
 
+#ifdef LTUN_LIB
+int ltun_init_start(char *s_local_host, char *s_local_port, char *s_local_mac,
+		char *s_target_host, char *s_target_port, char *s_target_mac,
+		char *s_timeout, char *s_ktun, int i_verbose)
+#else
 int main(int argc, char **argv)
+#endif
 {
-	int c;
 	char *timeout = NULL;
 
     srand(time(NULL));
 
+#ifdef LTUN_LIB
+	local_host = s_local_host;
+	local_port = s_local_port;
+	if (s_local_mac) {
+		parse_optarg_mac(local_mac, s_local_mac);
+	}
+	target_host = s_target_host;
+	target_port = s_target_port;
+	if (s_target_mac) {
+		parse_optarg_mac(target_mac, s_target_mac);
+	}
+	timeout = s_timeout;
+	verbose = i_verbose;
+	ktun = s_ktun;
+#else
+	int c;
 	opterr = 0;
-
 	while ((c = getopt_long(argc, argv, "s:p:m:S:P:M:t:k:hv", NULL, NULL)) != -1) {
 		switch (c) {
 			case 's':
@@ -1267,6 +1287,7 @@ int main(int argc, char **argv)
 		usage();
 		exit(EXIT_FAILURE);
 	}
+#endif
 
 	if (timeout == NULL) {
 		timeout = "90";
