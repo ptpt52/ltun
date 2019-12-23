@@ -58,7 +58,11 @@ __be16 _target_port = 0;
 
 unsigned int conn_timeout = 90;
 
+#ifdef LTUN_LIB
+	//no signal handle
+#else
 static void signal_cb(EV_P_ ev_signal *w, int revents);
+#endif
 static void accept_cb(EV_P_ ev_io *w, int revents);
 static void rawkcp_send_handshake(EV_P_ rawkcp_t *rkcp);
 static void server_send_cb(EV_P_ ev_io *w, int revents);
@@ -116,9 +120,13 @@ static int set_reuseport(int socket)
 	return setsockopt(socket, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
 }
 
+#ifdef LTUN_LIB
+	//no signal handle
+#else
 static struct ev_signal sigint_watcher;
 static struct ev_signal sigterm_watcher;
 static struct ev_signal sigchld_watcher;
+#endif
 
 int create_and_bind(const char *host, const char *port)
 {
@@ -1093,12 +1101,19 @@ void close_and_free_server(EV_P_ server_t *server)
 
 void ltun_call_exit(EV_P)
 {
-	ev_signal_stop(EV_DEFAULT, &sigint_watcher);
-	ev_signal_stop(EV_DEFAULT, &sigterm_watcher);
-	ev_signal_stop(EV_DEFAULT, &sigchld_watcher);
+#ifdef LTUN_LIB
+	//no signal handle
+#else
+	ev_signal_stop(EV_A_ &sigint_watcher);
+	ev_signal_stop(EV_A_ &sigterm_watcher);
+	ev_signal_stop(EV_A_ &sigchld_watcher);
+#endif
 	ev_unloop(EV_A_ EVUNLOOP_ALL);
 }
 
+#ifdef LTUN_LIB
+	//no signal handle
+#else
 static void signal_cb(EV_P_ ev_signal *w, int revents)
 {
 	if (revents & EV_SIGNAL) {
@@ -1111,6 +1126,7 @@ static void signal_cb(EV_P_ ev_signal *w, int revents)
 		}
 	}
 }
+#endif
 
 static void accept_cb(EV_P_ ev_io *w, int revents)
 {
@@ -1216,10 +1232,11 @@ static void usage()
 }
 
 #ifdef LTUN_LIB
-void ltun_service_stop(int pid)
+struct ev_loop *g_loop = NULL;
+void ltun_service_stop(void)
 {
-	if (pid > 0) {
-		kill(pid, SIGTERM);
+	if (g_loop) {
+		ltun_call_exit(g_loop);
 	}
 }
 
@@ -1235,16 +1252,6 @@ int main(int argc, char **argv)
     srand(time(NULL));
 
 #ifdef LTUN_LIB
-	pid_t p;
-
-	p = fork();
-	if (p < 0) {
-		return p;
-	} else if (p > 0) {
-		//Parent process, return child pid
-		return p;
-	}
-
 	local_host = s_local_host;
 	local_port = s_local_port;
 	if (s_local_mac) {
@@ -1321,6 +1328,9 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
+#ifdef LTUN_LIB
+	//no signal handle
+#else
 	// ignore SIGPIPE
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGABRT, SIG_IGN);
@@ -1331,9 +1341,12 @@ int main(int argc, char **argv)
 	ev_signal_start(EV_DEFAULT, &sigint_watcher);
 	ev_signal_start(EV_DEFAULT, &sigterm_watcher);
 	ev_signal_start(EV_DEFAULT, &sigchld_watcher);
-
+#endif
 	// initialize ev loop
 	struct ev_loop *loop = EV_DEFAULT;
+#ifdef LTUN_LIB
+	g_loop = loop;
+#endif
 
 	printf("local_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", local_mac[0], local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5]);
 	printf("target_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", target_mac[0], target_mac[1], target_mac[2], target_mac[3], target_mac[4], target_mac[5]);

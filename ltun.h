@@ -120,7 +120,7 @@ extern int ltun_service_start(char *s_local_host, char *s_local_port, char *s_lo
 		char *s_target_host, char *s_target_port, char *s_target_mac,
 		char *s_timeout, char *s_ktun, int i_verbose);
 
-extern void ltun_service_stop(int pid);
+extern void ltun_service_stop(void);
 #endif
 
 #endif // _LTUN_H
