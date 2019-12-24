@@ -95,7 +95,7 @@ typedef struct endpoint_buffer_t {
 	endpoint_t *endpoint;
 	void (*recycle)(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb);
 	unsigned char dmac[6];
-	unsigned int start_timeout;
+	unsigned int delay;
 	int repeat;
 	int interval;
 	__be32 addr;

@@ -840,8 +840,8 @@ static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 	}
 
 	dlist_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
-		if (pos->start_timeout != 0) {
-			pos->start_timeout--;
+		if (pos->delay != 0) {
+			pos->delay--;
 			continue;
 		}
 		if (pos->interval > 0 && (endpoint->ticks % pos->interval) != 0) {
@@ -1183,7 +1183,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 
 	memcpy(eb->dmac, id, 6);
 	eb->endpoint = endpoint;
-	eb->start_timeout = 5; //start send to ktun after 5s
+	eb->delay = 5; //start send to ktun after 5s
 	eb->repeat = 30;
 	eb->addr = endpoint->ktun_addr;
 	eb->port = endpoint->ktun_port;
@@ -1205,7 +1205,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 
 	memcpy(eb->dmac, id, 6);
 	eb->endpoint = endpoint;
-	eb->start_timeout = 0; //start send broadcast now
+	eb->delay = 0; //start send broadcast now
 	eb->repeat = 30;
 	eb->addr = endpoint->broadcast_addr;
 	eb->port = endpoint->broadcast_port;
