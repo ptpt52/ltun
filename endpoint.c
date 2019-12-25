@@ -42,6 +42,8 @@
 #define EWOULDBLOCK EAGAIN
 #endif
 
+void peer_attach_pipe(peer_t *peer, pipe_t *pipe, int ptype);
+
 void pipe_timeout_call(EV_P_ pipe_t *pipe);
 void close_and_free_pipe(EV_P_ pipe_t *pipe);
 pipe_t *new_pipe(__be32 ip, __be16 port, peer_t *peer);
@@ -111,7 +113,8 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 	endpoint->buf->len = r;
 
 	if (endpoint->buf->len >= 8 && get_byte4(endpoint->buf->data) == htonl(KTUN_P_MAGIC)) {
-		if (get_byte4(endpoint->buf->data + 4) == htonl(0x10020001)) {
+		int cmd = get_byte4(endpoint->buf->data + 4);
+		if (cmd == htonl(0x10020001)) {
 			//0x10020001: resp=1, ret=002, code=0001 listen ok:   smac, ip, port
 			unsigned char smac[6];
 			__be32 ip;
@@ -127,7 +130,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			}
 
 			endpoint->active_ts = iclock();
-		} else if (get_byte4(endpoint->buf->data + 4) == htonl(0x10020002)) {
+		} else if (cmd == htonl(0x10020002)) {
 			//0x10020002: resp=1, ret=002, code=0002 connect ready but not found: smac, dmac, sip, sport, 0, 0
 			unsigned char smac[6], dmac[6];
 			__be32 sip;
@@ -144,7 +147,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 						dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
 						NIPV4_ARG(sip), ntohs(sport));
 			}
-		} else if (get_byte4(endpoint->buf->data + 4) == htonl(0x10030002)) {
+		} else if (cmd == htonl(0x10030002)) {
 			//0x10030002: resp=1, ret=003, code=0002 connect ready and found:     smac, dmac, sip, sport, dip, dport
 			unsigned char smac[6], dmac[6];
 			__be32 sip, dip;
@@ -190,14 +193,20 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				ev_io_start(EV_A_ & endpoint->send_ctx->io);
 			} while (0);
-		} else if (get_byte4(endpoint->buf->data + 4) == htonl(0x00000003) ||
-				get_byte4(endpoint->buf->data + 4) == htonl(0x00000002) ||
-				get_byte4(endpoint->buf->data + 4) == htonl(0x10000003)) {
+		} else if (cmd == htonl(0x00000003) || cmd == htonl(0x10000003) ||
+				cmd == htonl(0x00000005) || cmd == htonl(0x10000005)) {
 			//got 0x00000003 connection ready.
-			//got 0x00000002 someone want to connect, direct connect ok
-			//or got 0x10000003 connection reply
+			//got 0x00000005 someone broadcast want to connect, direct connect ok
+			//or got 0x10000003/0x10000005 connection reply
 			//0x00000003: in-comming connection: smac, dmac
+			int ptype = 0;
 			unsigned char smac[6], dmac[6];
+
+			if (cmd == htonl(0x00000005) || cmd == htonl(0x10000005)) {
+				ptype = 0;
+			} else {
+				ptype = 1;
+			}
 
 			get_byte6(endpoint->buf->data + 4 + 4, smac);
 			get_byte6(endpoint->buf->data + 4 + 4 + 6, dmac);
@@ -228,9 +237,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
 								NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 					}
+					get_peer(peer);
 					ret = endpoint_peer_insert(peer);
 					if (ret != 0) {
-						free(peer);
+						put_peer(peer);
 						return;
 					}
 				}
@@ -239,7 +249,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				if (pipe == NULL) {
 					int ret;
 					pipe = new_pipe(addr.sin_addr.s_addr, addr.sin_port, peer);
-					peer->pipe = pipe;
+					peer_attach_pipe(peer, pipe, ptype);
 
 					if (verbose) {
 						printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create pipe\n",
@@ -306,7 +316,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				}
 
 				//reply to smac
-				if (get_byte4(endpoint->buf->data + 4) == htonl(0x00000003) || get_byte4(endpoint->buf->data + 4) == htonl(0x00000002)) {
+				if (cmd == htonl(0x00000003) || cmd == htonl(0x00000005)) {
 					endpoint_buffer_t *eb;
 
 					eb = malloc(sizeof(endpoint_buffer_t));
@@ -323,7 +333,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					eb->buf.idx = 0;
 					eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
 					set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
-					set_byte4(eb->buf.data + 4, htonl(0x10000003));
+					set_byte4(eb->buf.data + 4, htonl(ntohl(cmd) | 0x10000000));
 					set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
 					set_byte6(eb->buf.data + 4 + 4 + 6, smac); //dmac
 
@@ -342,7 +352,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 				}
 			}
-		} else if (get_byte4(endpoint->buf->data + 4) == htonl(0x00000004)) {
+		} else if (cmd == htonl(0x00000004)) {
 			//got 0x00000004 keep alive
 			unsigned char smac[6], dmac[6];
 
@@ -363,7 +373,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					}
 				}
 			}
-		} else if (get_byte4(endpoint->buf->data + 4) == htonl(0x106b6370)) {
+		} else if (cmd == htonl(0x106b6370)) {
 			//got reset-kcp-pipe from remote
 			int conv;
 			rawkcp_t *rkcp;
@@ -382,7 +392,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			}
 
 			pipe_timeout_call(EV_A_ pipe);
-		} else if (get_byte4(endpoint->buf->data + 4) == htonl(0x006b6370)) {
+		} else if (cmd == htonl(0x006b6370)) {
 			//got close msg from remote, kcp need close
 			int conv;
 			unsigned int nbytes;
@@ -446,7 +456,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			}
 		} else {
 			//unknown KTUN code
-			printf("unknown KTUN code=0x%08x\n", get_byte4(endpoint->buf->data + 4));
+			printf("unknown KTUN code=0x%08x\n", cmd);
 			//TODO
 		}
 	//end KTUN_P_MAGIC
@@ -840,10 +850,6 @@ static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 	}
 
 	dlist_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
-		if (pos->delay != 0) {
-			pos->delay--;
-			continue;
-		}
 		if (pos->interval > 0 && (endpoint->ticks % pos->interval) != 0) {
 			continue;
 		}
@@ -1183,7 +1189,6 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 
 	memcpy(eb->dmac, id, 6);
 	eb->endpoint = endpoint;
-	eb->delay = 5; //start send to ktun after 5s
 	eb->repeat = 30;
 	eb->addr = endpoint->ktun_addr;
 	eb->port = endpoint->ktun_port;
@@ -1197,7 +1202,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	set_byte6(eb->buf.data + 4 + 4 + 6, id); //dmac
 
 	eb->recycle = default_eb_recycle;
-	dlist_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
+	dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
 	//send to broadcast
 	eb = malloc(sizeof(endpoint_buffer_t));
@@ -1205,16 +1210,15 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 
 	memcpy(eb->dmac, id, 6);
 	eb->endpoint = endpoint;
-	eb->delay = 0; //start send broadcast now
 	eb->repeat = 30;
 	eb->addr = endpoint->broadcast_addr;
 	eb->port = endpoint->broadcast_port;
 
-	//[KTUN_P_MAGIC|0x00000002|smac|dmac] smac tell ktun I want to connect dmac
+	//[KTUN_P_MAGIC|0x00000005|smac|dmac] smac broadcast I want to connect dmac
 	eb->buf.idx = 0;
 	eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
 	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
-	set_byte4(eb->buf.data + 4, htonl(0x00000002));
+	set_byte4(eb->buf.data + 4, htonl(0x00000005));
 	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
 	set_byte6(eb->buf.data + 4 + 4 + 6, id); //dmac
 
@@ -1291,8 +1295,24 @@ static void free_pipe(pipe_t *pipe)
 void close_and_free_pipe(EV_P_ pipe_t *pipe)
 {
 	if (pipe != NULL) {
+		put_peer(pipe->peer);
 		ev_timer_stop(EV_A_ & pipe->watcher);
 		free_pipe(pipe);
+	}
+}
+
+void peer_attach_pipe(peer_t *peer, pipe_t *pipe, int ptype)
+{
+	peer->pipe[ptype] = pipe;
+}
+
+void peer_detach_pipe(peer_t *peer, pipe_t *pipe)
+{
+	int ptype;
+	for (ptype = 0; ptype <= 2; ptype++) {
+		if (peer->pipe[ptype] == pipe) {
+			peer->pipe[ptype] = NULL;
+		}
 	}
 }
 
@@ -1302,7 +1322,7 @@ void pipe_timeout_call(EV_P_ pipe_t *pipe)
 		peer_t *peer = pipe->peer;
 		pipe->stage = STAGE_CLOSE;
 		hlist_del_init(&pipe->hnode);
-		peer->pipe = NULL;
+		peer_detach_pipe(peer, pipe);
 		pipe->eb->repeat = 0;
 		pipe->eb->interval = 0;
 
@@ -1316,15 +1336,6 @@ void pipe_timeout_call(EV_P_ pipe_t *pipe)
 		endpoint_connect_to_peer(EV_A_ peer->endpoint, peer->id);
 		ev_timer_again(EV_A_ & pipe->watcher);
 	} else {
-		peer_t *peer = pipe->peer;
-		if (peer->pipe == NULL) {
-			//peer conn lost
-			hlist_del_init(&peer->hnode);
-			//the last try
-			endpoint_connect_to_peer(EV_A_ peer->endpoint, peer->id);
-			//free
-			put_peer(peer);
-		}
 		close_and_free_pipe(EV_A_ pipe);
 	}
 }
@@ -1344,7 +1355,7 @@ pipe_t *new_pipe(__be32 ip, __be16 port, peer_t *peer)
 	INIT_HLIST_NODE(&pipe->hnode);
 	pipe->addr = ip;
 	pipe->port = port;
-	pipe->peer = peer;
+	pipe->peer = get_peer(peer);
 	peer->use++;
 
 	ev_timer_init(&pipe->watcher, pipe_timeout_cb, 30, 30);
@@ -1378,7 +1389,13 @@ void endpoint_peer_pipe_exit(void)
 
 pipe_t *endpoint_peer_pipe_select(peer_t *peer)
 {
-	return peer->pipe;
+	int ptype = 0;
+	do {
+		if (peer->pipe[ptype])
+			return peer->pipe[ptype];
+	} while (++ptype <= 2);
+
+	return NULL;
 }
 
 pipe_t *endpoint_peer_pipe_lookup(__be32 addr, __be16 port)
