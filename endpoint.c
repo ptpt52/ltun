@@ -43,6 +43,7 @@
 #endif
 
 void peer_attach_pipe(peer_t *peer, pipe_t *pipe, int ptype);
+void peer_detach_pipe(peer_t *peer, pipe_t *pipe);
 
 void pipe_timeout_call(EV_P_ pipe_t *pipe);
 void close_and_free_pipe(EV_P_ pipe_t *pipe);
@@ -259,6 +260,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 					ret = endpoint_peer_pipe_insert(pipe);
 					if (ret != 0) {
+						peer_detach_pipe(peer, pipe);
 						close_and_free_pipe(EV_A_ pipe);
 						return;
 					}
