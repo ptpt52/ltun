@@ -1226,6 +1226,7 @@ static void usage()
 	printf("       [-M <target_mac>]          Target Mac address\n");
 	printf("       [-t <timeout>]             Socket timeout in seconds.\n");
 	printf("       [-k <ktun>]                Ktun server\n");
+	printf("       [-K]                       Run as ktun server\n");
 	printf("       [-v]                       Verbose mode.\n");
 	printf("       [-h, --help]               Print this message.\n");
 	printf("\n");
@@ -1248,6 +1249,7 @@ int main(int argc, char **argv)
 #endif
 {
 	char *timeout = NULL;
+	int ktun_server = 0;
 
     srand(time(NULL));
 
@@ -1268,7 +1270,7 @@ int main(int argc, char **argv)
 #else
 	int c;
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "s:p:m:S:P:M:t:k:hv", NULL, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "s:p:m:S:P:M:t:k:Khv", NULL, NULL)) != -1) {
 		switch (c) {
 			case 's':
 				local_host = optarg;
@@ -1296,6 +1298,9 @@ int main(int argc, char **argv)
 				break;
 			case 'k':
 				ktun = optarg;
+				break;
+			case 'K':
+				ktun_server = 1;
 				break;
 			case 'h':
 				usage();
@@ -1388,7 +1393,7 @@ int main(int argc, char **argv)
 	endpoint_peer_init();
 	__rawkcp_init();
 
-	default_endpoint = endpoint_init(loop, local_mac, ktun, ktun_port, bktun, bktun_port);
+	default_endpoint = endpoint_init(loop, local_mac, ktun, ktun_port, bktun, bktun_port, ktun_server);
 	if (default_endpoint == NULL) {
 		goto fail_out;
 	}

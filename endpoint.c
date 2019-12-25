@@ -81,6 +81,42 @@ void endpoint_buffer_recycle(EV_P_ endpoint_t *endpoint, endpoint_buffer_t *eb)
 	}
 }
 
+
+static void endpoint_ktun_recv_cb(EV_P_ ev_io *w, int revents)
+{
+	struct sockaddr_in addr;
+	int addr_len = sizeof(addr);
+	int fd;
+
+	endpoint_ctx_t *recv_ctx = (endpoint_ctx_t *)w;
+	endpoint_t *endpoint = recv_ctx->endpoint;
+
+	fd = endpoint->ktun_fd;
+
+	ssize_t r = recvfrom(fd, endpoint->buf->data, BUF_SIZE, 0, (struct sockaddr*) &addr, (socklen_t *) &addr_len);
+
+	if (r == 0) {
+		ev_io_stop(EV_A_ w);
+		endpoint->stage = STAGE_ERROR;
+		return;
+	} else if (r == -1) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			return;
+		} else {
+			ev_io_stop(EV_A_ w);
+			endpoint->stage = STAGE_ERROR;
+			return;
+		}
+	}
+
+	endpoint->buf->len = r;
+
+	if (endpoint->buf->len >= 8 && get_byte4(endpoint->buf->data) == htonl(KTUN_P_MAGIC)) {
+		//int cmd = get_byte4(endpoint->buf->data + 4);
+		//TODO ktun server
+	}
+}
+
 static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 {
 	struct sockaddr_in addr;
@@ -993,7 +1029,7 @@ int endpoint_create_fd(const char *host, const char *port)
 	return listen_sock;
 }
 
-endpoint_t *new_endpoint(int fd, int broadcast_fd)
+endpoint_t *new_endpoint(int fd, int broadcast_fd, int ktun_fd)
 {
 	endpoint_t *endpoint = malloc(sizeof(endpoint_t));
 	memset(endpoint, 0, sizeof(endpoint_t));
@@ -1016,6 +1052,7 @@ endpoint_t *new_endpoint(int fd, int broadcast_fd)
 	memset(endpoint->send_ctx, 0, sizeof(endpoint_ctx_t));
 	INIT_DLIST_HEAD(&endpoint->send_ctx->buf_head);
 
+	endpoint->ktun_fd = ktun_fd;
 	endpoint->broadcast_fd = broadcast_fd;
 	endpoint->fd = fd;
 	endpoint->broadcast_recv_ctx->endpoint = endpoint;
@@ -1024,6 +1061,12 @@ endpoint_t *new_endpoint(int fd, int broadcast_fd)
 
 	endpoint->active_ts = iclock();
 	
+	if (endpoint->ktun_fd != -1) {
+		endpoint->ktun_recv_ctx = malloc(sizeof(endpoint_ctx_t));
+		memset(endpoint->ktun_recv_ctx, 0, sizeof(endpoint_ctx_t));
+		INIT_DLIST_HEAD(&endpoint->ktun_recv_ctx->buf_head);
+		ev_io_init(&endpoint->ktun_recv_ctx->io, endpoint_ktun_recv_cb, endpoint->ktun_fd, EV_READ);
+	}
 	ev_io_init(&endpoint->broadcast_recv_ctx->io, endpoint_recv_cb, endpoint->broadcast_fd, EV_READ);
 	ev_io_init(&endpoint->recv_ctx->io, endpoint_recv_cb, endpoint->fd, EV_READ);
 	ev_io_init(&endpoint->send_ctx->io, endpoint_send_cb, endpoint->fd, EV_WRITE);
@@ -1040,6 +1083,10 @@ static void free_endpoint(endpoint_t *endpoint)
 	}
 	free(endpoint->send_ctx);
 	free(endpoint->recv_ctx);
+	free(endpoint->broadcast_recv_ctx);
+	if (endpoint->ktun_fd != -1) {
+		free(endpoint->ktun_recv_ctx);
+	}
 	free(endpoint);
 }
 
@@ -1052,6 +1099,10 @@ void close_and_free_endpoint(EV_P_ endpoint_t *endpoint)
 		ev_timer_stop(EV_A_ & endpoint->watcher);
 		close(endpoint->fd);
 		close(endpoint->broadcast_fd);
+		if (endpoint->ktun_fd != -1) {
+			ev_io_stop(EV_A_ & endpoint->ktun_recv_ctx->io);
+			close(endpoint->ktun_fd);
+		}
 		do {
 			endpoint_buffer_t *pos, *n;
 			dlist_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
@@ -1441,10 +1492,14 @@ int endpoint_peer_pipe_insert(pipe_t *pipe)
 	return 0;
 }
 
-endpoint_t *endpoint_init(EV_P_ const unsigned char *id, const char *ktun, const char *ktun_port, const char *bktun, const char *bktun_port)
+endpoint_t *endpoint_init(EV_P_ const unsigned char *id,
+		const char *ktun, const char *ktun_port,
+		const char *bktun, const char *bktun_port,
+		int ktun_sever)
 {
 	int fd;
 	int bktun_fd;
+	int ktun_fd = -1;
 	endpoint_t *endpoint;
 
 	fd = endpoint_create_fd("0.0.0.0", "0");
@@ -1460,7 +1515,17 @@ endpoint_t *endpoint_init(EV_P_ const unsigned char *id, const char *ktun, const
 	}
 	setnonblocking(bktun_fd);
 
-	endpoint = new_endpoint(fd, bktun_fd);
+	if (ktun_sever) {
+		ktun_fd = endpoint_create_fd("0.0.0.0", ktun_port);
+		if (ktun_fd == -1) {
+			close(bktun_fd);
+			close(fd);
+			return NULL;
+		}
+		setnonblocking(ktun_fd);
+	}
+
+	endpoint = new_endpoint(fd, bktun_fd, ktun_fd);
 	if (endpoint == NULL) {
 		close(bktun_fd);
 		close(fd);

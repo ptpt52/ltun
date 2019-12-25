@@ -53,6 +53,7 @@ typedef struct endpoint_t {
 
 	int fd;
 	int broadcast_fd;
+	int ktun_fd;
 	int ticks;
 	unsigned char id[6];
 
@@ -63,6 +64,7 @@ typedef struct endpoint_t {
 
 	buffer_t *buf;
 
+	struct endpoint_ctx *ktun_recv_ctx;
 	struct endpoint_ctx *broadcast_recv_ctx;
 	struct endpoint_ctx *recv_ctx;
 	struct endpoint_ctx *send_ctx;
@@ -215,7 +217,10 @@ extern pipe_t *endpoint_peer_pipe_select(peer_t *peer);
 extern pipe_t *endpoint_peer_pipe_lookup(__be32 addr, __be16 port);
 extern int endpoint_peer_pipe_insert(pipe_t *pipe);
 
-extern endpoint_t *endpoint_init(EV_P_ const unsigned char *id, const char *ktun, const char *ktun_port, const char *bktun, const char *bktun_port);
+extern endpoint_t *endpoint_init(EV_P_ const unsigned char *id,
+		const char *ktun, const char *ktun_port,
+		const char *bktun, const char *bktun_port,
+		int ktun_server);
 extern void close_and_free_endpoint(EV_P_ endpoint_t *endpoint);
 
 #endif /* _ENDPOINT_H_ */
