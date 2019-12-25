@@ -54,7 +54,7 @@ void default_eb_recycle(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb
 {
 	if (eb->repeat > 0) {
 		peer_t *peer = endpoint_peer_lookup(eb->dmac);
-		if (peer) {
+		if (peer && peer->pipe[eb->ptype]) {
 			//printf("default_eb_recycle found peer\n");
 			free(eb);
 			return;
@@ -1190,6 +1190,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	memset(eb, 0, sizeof(endpoint_buffer_t));
 
 	memcpy(eb->dmac, id, 6);
+	eb->ptype = 1;
 	eb->endpoint = endpoint;
 	eb->repeat = 30;
 	eb->addr = endpoint->ktun_addr;
@@ -1211,6 +1212,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	memset(eb, 0, sizeof(endpoint_buffer_t));
 
 	memcpy(eb->dmac, id, 6);
+	eb->ptype = 0;
 	eb->endpoint = endpoint;
 	eb->repeat = 30;
 	eb->addr = endpoint->broadcast_addr;
