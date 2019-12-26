@@ -78,6 +78,8 @@ typedef struct peer_t {
 	struct hlist_node hnode;
 	unsigned int use;
 	unsigned char id[6];
+	__be16 port;
+	__be32 addr;
 	struct pipe_t *pipe[3];
 	struct endpoint_t *endpoint;
 } peer_t;

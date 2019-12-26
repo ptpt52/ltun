@@ -86,14 +86,11 @@ static void endpoint_ktun_recv_cb(EV_P_ ev_io *w, int revents)
 {
 	struct sockaddr_in addr;
 	int addr_len = sizeof(addr);
-	int fd;
 
 	endpoint_ctx_t *recv_ctx = (endpoint_ctx_t *)w;
 	endpoint_t *endpoint = recv_ctx->endpoint;
 
-	fd = endpoint->ktun_fd;
-
-	ssize_t r = recvfrom(fd, endpoint->buf->data, BUF_SIZE, 0, (struct sockaddr*) &addr, (socklen_t *) &addr_len);
+	ssize_t r = recvfrom(endpoint->ktun_fd, endpoint->buf->data, BUF_SIZE, 0, (struct sockaddr*) &addr, (socklen_t *) &addr_len);
 
 	if (r == 0) {
 		ev_io_stop(EV_A_ w);
@@ -112,9 +109,166 @@ static void endpoint_ktun_recv_cb(EV_P_ ev_io *w, int revents)
 	endpoint->buf->len = r;
 
 	if (endpoint->buf->len >= 8 && get_byte4(endpoint->buf->data) == htonl(KTUN_P_MAGIC)) {
-		//int cmd = get_byte4(endpoint->buf->data + 4);
-		//TODO ktun server
+		int cmd = get_byte4(endpoint->buf->data + 4);
+		if (cmd == htonl(0x00000001)) {
+			//reply
+			//0x10010001: resp=1, ret=001, code=0001 listen fail: smac, ip, port
+			//0x10020001: resp=1, ret=002, code=0001 listen ok:   smac, ip, port
+			peer_t *peer;
+			unsigned char smac[6];
+
+			get_byte6(endpoint->buf->data + 4 + 4, smac);
+
+			peer = endpoint_peer_lookup(smac);
+			if (peer == NULL) {
+				int ret;
+				peer = malloc(sizeof(peer_t));
+				memset(peer, 0, sizeof(peer_t));
+				INIT_HLIST_NODE(&peer->hnode);
+				memcpy(peer->id, smac, 6);
+				peer->endpoint = endpoint;
+
+				if (verbose) {
+					printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create peer\n",
+							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
+							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+				}
+				get_peer(peer);
+				ret = endpoint_peer_insert(peer);
+				if (ret != 0) {
+					put_peer(peer);
+					return;
+				}
+			}
+			if (peer->addr != addr.sin_addr.s_addr)
+				peer->addr = addr.sin_addr.s_addr;
+			if (peer->port != addr.sin_port)
+				peer->port = addr.sin_port;
+
+			do {
+				endpoint->buf->idx = 0;
+				endpoint->buf->len = 4 + 4 + 6 + 4 + 2;
+				set_byte4(endpoint->buf->data, htonl(KTUN_P_MAGIC));
+				set_byte4(endpoint->buf->data + 4, htonl(0x10020001));
+				set_byte6(endpoint->buf->data + 4 + 4, peer->id); //smac
+				set_byte4(endpoint->buf->data + 4 + 4 + 6, peer->addr);
+				set_byte2(endpoint->buf->data + 4 + 4 + 6 + 4, peer->port);
+
+				ssize_t s = sendto(endpoint->ktun_fd, endpoint->buf->data, endpoint->buf->len, 0, (const struct sockaddr *)&addr, sizeof(addr));
+				if (s == -1) {
+					//send fail
+					if (errno != EAGAIN && errno != EWOULDBLOCK) {
+						perror("ktun_send_send");
+					}
+				}
+			} while (0);
+		} else if (cmd == htonl(0x00000002)) {
+			peer_t *peer, *d_peer;
+			unsigned char smac[6];
+			unsigned char dmac[6];
+
+			get_byte6(endpoint->buf->data + 4 + 4, smac);
+			get_byte6(endpoint->buf->data + 4 + 4 + 6, dmac);
+
+			peer = endpoint_peer_lookup(smac);
+			if (peer == NULL) {
+				int ret;
+				peer = malloc(sizeof(peer_t));
+				memset(peer, 0, sizeof(peer_t));
+				INIT_HLIST_NODE(&peer->hnode);
+				memcpy(peer->id, smac, 6);
+				peer->endpoint = endpoint;
+
+				if (verbose) {
+					printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create peer\n",
+							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
+							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+				}
+				get_peer(peer);
+				ret = endpoint_peer_insert(peer);
+				if (ret != 0) {
+					put_peer(peer);
+					return;
+				}
+			}
+			if (peer->addr != addr.sin_addr.s_addr)
+				peer->addr = addr.sin_addr.s_addr;
+			if (peer->port != addr.sin_port)
+				peer->port = addr.sin_port;
+
+			d_peer = endpoint_peer_lookup(dmac);
+			if (d_peer && d_peer->addr && d_peer->port) {
+				do {
+					endpoint->buf->idx = 0;
+					endpoint->buf->len = 4 + 4 + 6 + 6 + 4 + 2 + 4 + 2;
+					set_byte4(endpoint->buf->data, htonl(KTUN_P_MAGIC));
+					set_byte4(endpoint->buf->data + 4, htonl(0x10030002));
+					set_byte6(endpoint->buf->data + 4 + 4, smac); //smac
+					set_byte6(endpoint->buf->data + 4 + 4 + 6, dmac); //dmac
+					set_byte4(endpoint->buf->data + 4 + 4 + 6 + 6, peer->addr);
+					set_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4, peer->port);
+					set_byte4(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2, d_peer->addr);
+					set_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2 + 4, d_peer->port);
+
+					ssize_t s = sendto(endpoint->ktun_fd, endpoint->buf->data, endpoint->buf->len, 0, (const struct sockaddr *)&addr, sizeof(addr));
+					if (s == -1) {
+						//send fail
+						if (errno != EAGAIN && errno != EWOULDBLOCK) {
+							perror("ktun_send_send");
+						}
+					}
+				} while (0);
+				do {
+					endpoint->buf->idx = 0;
+					endpoint->buf->len = 4 + 4 + 6 + 6 + 4 + 2 + 4 + 2;
+					set_byte4(endpoint->buf->data, htonl(KTUN_P_MAGIC));
+					set_byte4(endpoint->buf->data + 4, htonl(0x10030002));
+					set_byte6(endpoint->buf->data + 4 + 4, dmac); //smac
+					set_byte6(endpoint->buf->data + 4 + 4 + 6, smac); //dmac
+					set_byte4(endpoint->buf->data + 4 + 4 + 6 + 6, d_peer->addr);
+					set_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4, d_peer->port);
+					set_byte4(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2, peer->addr);
+					set_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2 + 4, peer->port);
+
+					addr.sin_addr.s_addr = d_peer->addr;
+					addr.sin_port = d_peer->port;
+					ssize_t s = sendto(endpoint->ktun_fd, endpoint->buf->data, endpoint->buf->len, 0, (const struct sockaddr *)&addr, sizeof(addr));
+					if (s == -1) {
+						//send fail
+						if (errno != EAGAIN && errno != EWOULDBLOCK) {
+							perror("ktun_send_send");
+						}
+					}
+				} while (0);
+			} else {
+				do {
+					endpoint->buf->idx = 0;
+					endpoint->buf->len = 4 + 4 + 6 + 6 + 4 + 2 + 4 + 2;
+					set_byte4(endpoint->buf->data, htonl(KTUN_P_MAGIC));
+					set_byte4(endpoint->buf->data + 4, htonl(0x10020002));
+					set_byte6(endpoint->buf->data + 4 + 4, smac); //smac
+					set_byte6(endpoint->buf->data + 4 + 4 + 6, dmac); //dmac
+					set_byte4(endpoint->buf->data + 4 + 4 + 6 + 6, peer->addr);
+					set_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4, peer->port);
+					set_byte4(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2, htonl(0));
+					set_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2 + 4, htons(0));
+
+					ssize_t s = sendto(endpoint->ktun_fd, endpoint->buf->data, endpoint->buf->len, 0, (const struct sockaddr *)&addr, sizeof(addr));
+					if (s == -1) {
+						//send fail
+						if (errno != EAGAIN && errno != EWOULDBLOCK) {
+							perror("ktun_send_send");
+						}
+					}
+				} while (0);
+			}
+		} else {
+			//unknown KTUN code
+			printf("unknown KTUN code=0x%08x\n", cmd);
+			//TODO
+		}
 	}
+	//end KTUN_P_MAGIC
 }
 
 static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
