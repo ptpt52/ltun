@@ -1219,6 +1219,7 @@ endpoint_t *new_endpoint(int fd, int broadcast_fd, int ktun_fd)
 		endpoint->ktun_recv_ctx = malloc(sizeof(endpoint_ctx_t));
 		memset(endpoint->ktun_recv_ctx, 0, sizeof(endpoint_ctx_t));
 		INIT_DLIST_HEAD(&endpoint->ktun_recv_ctx->buf_head);
+		endpoint->ktun_recv_ctx->endpoint = endpoint;
 		ev_io_init(&endpoint->ktun_recv_ctx->io, endpoint_ktun_recv_cb, endpoint->ktun_fd, EV_READ);
 	}
 	ev_io_init(&endpoint->broadcast_recv_ctx->io, endpoint_recv_cb, endpoint->broadcast_fd, EV_READ);
