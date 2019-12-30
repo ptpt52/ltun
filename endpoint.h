@@ -192,8 +192,10 @@ static inline int id_is_lt(const unsigned char *id1, const unsigned char *id2)
 
 static inline int id_is_eq(const unsigned char *id1, const unsigned char *id2)
 {
-	return memcmp(id1, id2, 6);
+	return memcmp(id1, id2, 6) == 0;
 }
+
+extern unsigned int rawkcp_conv_alloc(int type);
 
 #define KTUN_P_MAGIC 0xfffb0099
 
@@ -201,6 +203,8 @@ static inline int id_is_eq(const unsigned char *id1, const unsigned char *id2)
 extern endpoint_t *endpoint_new(int fd);
 extern int endpoint_create_fd(const char *host, const char *port);
 extern int endpoint_getaddrinfo(const char *host, const char *port, __be32 *real_addr, __be16 *real_port);
+
+extern int endpoint_select_relay_id(const unsigned char *smac, const unsigned char *dmac, unsigned char *relay_id);
 
 extern peer_t *endpoint_peer_lookup(unsigned char *id);
 extern int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id);

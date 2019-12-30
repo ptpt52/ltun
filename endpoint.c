@@ -162,6 +162,81 @@ static void endpoint_ktun_recv_cb(EV_P_ ev_io *w, int revents)
 					}
 				}
 			} while (0);
+		} else if (cmd == htonl(0x00000006)) {
+			peer_t *peer, *d_peer;
+			unsigned char smac[6];
+			unsigned char dmac[6];
+			unsigned char relay_id[6] = {0,0,0,0,0,0};
+
+			get_byte6(endpoint->buf->data + 4 + 4, smac);
+			get_byte6(endpoint->buf->data + 4 + 4 + 6, dmac);
+
+			peer = endpoint_peer_lookup(smac);
+			if (peer == NULL) {
+				int ret;
+				peer = malloc(sizeof(peer_t));
+				memset(peer, 0, sizeof(peer_t));
+				INIT_HLIST_NODE(&peer->hnode);
+				memcpy(peer->id, smac, 6);
+				peer->endpoint = endpoint;
+
+				if (verbose) {
+					printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create peer\n",
+							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
+							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+				}
+				get_peer(peer);
+				ret = endpoint_peer_insert(peer);
+				if (ret != 0) {
+					put_peer(peer);
+					return;
+				}
+			}
+			if (peer->addr != addr.sin_addr.s_addr)
+				peer->addr = addr.sin_addr.s_addr;
+			if (peer->port != addr.sin_port)
+				peer->port = addr.sin_port;
+
+			d_peer = endpoint_peer_lookup(dmac);
+			endpoint_select_relay_id(smac, dmac, relay_id);
+			if (d_peer && d_peer->addr && d_peer->port) {
+				do {
+					endpoint->buf->idx = 0;
+					endpoint->buf->len = 4 + 4 + 6 + 6 + 6;
+					set_byte4(endpoint->buf->data, htonl(KTUN_P_MAGIC));
+					set_byte4(endpoint->buf->data + 4, htonl(0x10000006));
+					set_byte6(endpoint->buf->data + 4 + 4, smac); //smac
+					set_byte6(endpoint->buf->data + 4 + 4 + 6, dmac); //dmac
+					set_byte6(endpoint->buf->data + 4 + 4 + 6 + 6, relay_id);
+
+					ssize_t s = sendto(endpoint->ktun_fd, endpoint->buf->data, endpoint->buf->len, 0, (const struct sockaddr *)&addr, sizeof(addr));
+					if (s == -1) {
+						//send fail
+						if (errno != EAGAIN && errno != EWOULDBLOCK) {
+							perror("ktun_send_send");
+						}
+					}
+				} while (0);
+				do {
+					endpoint->buf->idx = 0;
+					endpoint->buf->len = 4 + 4 + 6 + 6 + 4 + 2 + 4 + 2;
+					set_byte4(endpoint->buf->data, htonl(KTUN_P_MAGIC));
+					set_byte4(endpoint->buf->data + 4, htonl(0x10000006));
+					set_byte6(endpoint->buf->data + 4 + 4, dmac); //smac
+					set_byte6(endpoint->buf->data + 4 + 4 + 6, smac); //dmac
+					set_byte6(endpoint->buf->data + 4 + 4 + 6 + 6, relay_id);
+
+					addr.sin_addr.s_addr = d_peer->addr;
+					addr.sin_port = d_peer->port;
+					ssize_t s = sendto(endpoint->ktun_fd, endpoint->buf->data, endpoint->buf->len, 0, (const struct sockaddr *)&addr, sizeof(addr));
+					if (s == -1) {
+						//send fail
+						if (errno != EAGAIN && errno != EWOULDBLOCK) {
+							perror("ktun_send_send");
+						}
+					}
+				} while (0);
+			}
 		} else if (cmd == htonl(0x00000002)) {
 			peer_t *peer, *d_peer;
 			unsigned char smac[6];
@@ -321,6 +396,15 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			}
 
 			endpoint->active_ts = iclock();
+		} else if (cmd == htonl(0x10000006)) {
+			//
+			unsigned char smac[6], dmac[6];
+			unsigned char relay_id[6];
+
+			get_byte6(endpoint->buf->data + 4 + 4, smac);
+			get_byte6(endpoint->buf->data + 4 + 4 + 6, dmac);
+			get_byte6(endpoint->buf->data + 4 + 4 + 6 + 6, relay_id);
+			endpoint_connect_to_peer(EV_A_ endpoint, relay_id);
 		} else if (cmd == htonl(0x10020002)) {
 			//0x10020002: resp=1, ret=002, code=0002 connect ready but not found: smac, dmac, sip, sport, 0, 0
 			unsigned char smac[6], dmac[6];
@@ -565,6 +649,197 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					}
 				}
 			}
+		} else if (cmd == htonl(0x306b6370)) {
+			//KTUN_P_MAGIC|0x306b6370|conv|smac|dmac
+			//got kcp forward reply
+			int ret;
+			int conv;
+			pipe_t *pipe;
+			peer_t *s_peer;
+			rawkcp_t *rkcp;
+			unsigned char smac[6], dmac[6];
+
+			conv = get_byte4(endpoint->buf->data + 8);
+			conv = ntohl(conv);
+
+			pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
+			if (pipe == NULL) {
+				return;
+			}
+			rkcp = rawkcp_lookup(conv, pipe->peer->id);
+			if (rkcp == NULL) {
+				return;
+			}
+
+			if (rkcp->rawkcp) {
+				set_byte4(endpoint->buf->data + 8, htonl(rkcp->rawkcp->conv));
+				rkcp->rawkcp->kcp->output((const char*)endpoint->buf->data, endpoint->buf->len, rkcp->rawkcp->kcp, rkcp->rawkcp->kcp->user);
+				return;
+			}
+
+			get_byte6(endpoint->buf->data + 12, smac);
+			get_byte6(endpoint->buf->data + 12 + 6, dmac);
+
+			if (id_is_eq(endpoint->id, dmac)) {
+				s_peer = endpoint_peer_lookup(smac);
+				if (s_peer == NULL) {
+					//create s_peer
+					s_peer = malloc(sizeof(peer_t));
+					memset(s_peer, 0, sizeof(peer_t));
+					INIT_HLIST_NODE(&s_peer->hnode);
+					memcpy(s_peer->id, smac, 6);
+					s_peer->endpoint = endpoint;
+
+					if (verbose) {
+						printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create s_peer\n",
+								s_peer->id[0], s_peer->id[1], s_peer->id[2], s_peer->id[3], s_peer->id[4], s_peer->id[5],
+								NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+					}
+					get_peer(s_peer);
+					ret = endpoint_peer_insert(s_peer);
+					if (ret != 0) {
+						put_peer(s_peer);
+						return;
+					}
+				}
+				peer_attach_pipe(s_peer, pipe, 2);
+
+				rkcp->peer = get_peer(s_peer);
+				rkcp->endpoint = endpoint;
+				ret = rawkcp_insert(rkcp);
+				if (ret != 0) {
+					close_and_free_rawkcp(EV_A_ rkcp);
+					return;
+				}
+				ev_timer_start(EV_A_ & rkcp->watcher);
+			}
+
+		} else if (cmd == htonl(0x206b6370)) {
+			//KTUN_P_MAGIC|0x206b6370|conv|smac|dmac
+			//got kcp forward request
+			//new forward rawkcp
+			int conv;
+			unsigned char smac[6], dmac[6];
+			rawkcp_t *rkcp, *d_rkcp;
+			pipe_t *pipe;
+			peer_t *s_peer, *d_peer;
+
+			conv = get_byte4(endpoint->buf->data + 8);
+			conv = ntohl(conv);
+
+			get_byte6(endpoint->buf->data + 12, smac);
+			get_byte6(endpoint->buf->data + 12 + 6, dmac);
+
+			pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
+			if (pipe == NULL) {
+				return;
+			}
+			rkcp = rawkcp_lookup(conv, pipe->peer->id);
+			if (rkcp == NULL) {
+				int ret;
+				s_peer = endpoint_peer_lookup(smac);
+				d_peer = endpoint_peer_lookup(dmac);
+				if (id_is_eq(endpoint->id, dmac)) {
+					if (s_peer == NULL) {
+						//create s_peer
+						s_peer = malloc(sizeof(peer_t));
+						memset(s_peer, 0, sizeof(peer_t));
+						INIT_HLIST_NODE(&s_peer->hnode);
+						memcpy(s_peer->id, smac, 6);
+						s_peer->endpoint = endpoint;
+
+						if (verbose) {
+							printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create s_peer\n",
+									s_peer->id[0], s_peer->id[1], s_peer->id[2], s_peer->id[3], s_peer->id[4], s_peer->id[5],
+									NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+						}
+						get_peer(s_peer);
+						ret = endpoint_peer_insert(s_peer);
+						if (ret != 0) {
+							put_peer(s_peer);
+							return;
+						}
+					}
+					peer_attach_pipe(s_peer, pipe, 2);
+
+					rkcp = new_rawkcp(conv, pipe->peer->id);
+					if (rkcp == NULL) {
+						return;
+					}
+					rkcp->peer = get_peer(s_peer);
+					rkcp->endpoint = endpoint;
+					ret = rawkcp_insert(rkcp);
+					if (ret != 0) {
+						close_and_free_rawkcp(EV_A_ rkcp);
+						return;
+					}
+					ev_timer_start(EV_A_ & rkcp->watcher);
+
+					//TODO send reply
+					do {
+						endpoint->buf->idx = 0;
+						endpoint->buf->len = 4 + 4 + 4 + 6 + 6;
+						set_byte4(endpoint->buf->data, htonl(KTUN_P_MAGIC));
+						set_byte4(endpoint->buf->data + 4, htonl(0x306b6370));
+						set_byte4(endpoint->buf->data + 4 + 4, htonl(rkcp->conv)); //conv
+						set_byte6(endpoint->buf->data + 4 + 4 + 4, endpoint->id); //smac
+						set_byte6(endpoint->buf->data + 4 + 4 + 4 + 6, s_peer->id); //dmac
+
+						ssize_t s = sendto(endpoint->fd, endpoint->buf->data, endpoint->buf->len, 0, (const struct sockaddr *)&addr, sizeof(addr));
+						if (s == -1) {
+							//send fail
+							if (errno != EAGAIN && errno != EWOULDBLOCK) {
+								perror("ktun_send_send");
+							}
+						}
+					} while (0);
+					return;
+				}
+
+				if (s_peer == NULL || s_peer != pipe->peer || d_peer == NULL) {
+					//cannot forward
+					return;
+				}
+
+				rkcp = new_rawkcp(conv, s_peer->id);
+				if (rkcp == NULL) {
+					return;
+				}
+				rkcp->peer = get_peer(s_peer);
+				rkcp->endpoint = endpoint;
+				ret = rawkcp_insert(rkcp);
+				if (ret != 0) {
+					close_and_free_rawkcp(EV_A_ rkcp);
+					return;
+				}
+
+				//need forward
+				int conv_type = id_is_gt(endpoint->id, d_peer->id);
+				conv = rawkcp_conv_alloc(conv_type);
+				d_rkcp = new_rawkcp(conv, d_peer->id);
+				if (d_rkcp == NULL) {
+					close_and_free_rawkcp(EV_A_ rkcp);
+					return;
+				}
+				d_rkcp->peer = get_peer(d_peer);
+				d_rkcp->endpoint = endpoint;
+				ret = rawkcp_insert(d_rkcp);
+				if (ret != 0) {
+					close_and_free_rawkcp(EV_A_ d_rkcp);
+					close_and_free_rawkcp(EV_A_ rkcp);
+					return;
+				}
+
+				rkcp->rawkcp = d_rkcp;
+				d_rkcp->rawkcp = rkcp;
+			}
+
+			if (rkcp->rawkcp) {
+				set_byte4(endpoint->buf->data + 8, htonl(rkcp->rawkcp->conv));
+				rkcp->rawkcp->kcp->output((const char*)endpoint->buf->data, endpoint->buf->len, rkcp->rawkcp->kcp, rkcp->rawkcp->kcp->user);
+				return;
+			}
+
 		} else if (cmd == htonl(0x106b6370)) {
 			//got reset-kcp-pipe from remote
 			int conv;
@@ -580,6 +855,13 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			}
 			rkcp = rawkcp_lookup(conv, pipe->peer->id);
 			if (rkcp == NULL) {
+				return;
+			}
+
+			if (rkcp->rawkcp) {
+				set_byte4(endpoint->buf->data + 8, htonl(rkcp->rawkcp->conv));
+				rkcp->rawkcp->kcp->output((const char*)endpoint->buf->data, endpoint->buf->len, rkcp->rawkcp->kcp, rkcp->rawkcp->kcp->user);
+				//TODO close rkcp?
 				return;
 			}
 
@@ -600,6 +882,13 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			}
 			rkcp = rawkcp_lookup(conv, pipe->peer->id);
 			if (rkcp == NULL) {
+				return;
+			}
+
+			if (rkcp->rawkcp) {
+				set_byte4(endpoint->buf->data + 8, htonl(rkcp->rawkcp->conv));
+				rkcp->rawkcp->kcp->output((const char*)endpoint->buf->data, endpoint->buf->len, rkcp->rawkcp->kcp, rkcp->rawkcp->kcp->user);
+				//TODO close rkcp?
 				return;
 			}
 
@@ -705,6 +994,14 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				return;
 			}
 			ev_timer_start(EV_A_ & rkcp->watcher);
+		}
+
+		if (rkcp->rawkcp) {
+			//TODO forward rawkcp
+			//conv NAT
+			set_byte4(endpoint->buf->data, ikcp_encode32u_value(rkcp->rawkcp->conv));
+			rkcp->rawkcp->kcp->output((const char*)endpoint->buf->data, endpoint->buf->len, rkcp->rawkcp->kcp, rkcp->rawkcp->kcp->user);
+			return;
 		}
 
 		int ret = ikcp_input(rkcp->kcp, (const char *)endpoint->buf->data, endpoint->buf->len);
@@ -1383,6 +1680,55 @@ int endpoint_peer_insert(peer_t *peer)
 	}
 
 	hlist_add_head(&peer->hnode, head);
+
+	return 0;
+}
+
+int endpoint_select_relay_id(const unsigned char *smac, const unsigned char *dmac, unsigned char *relay_id)
+{
+	int i;
+	for (i = 0; i < peer_hash_size; i++) {
+		peer_t *pos;
+		struct hlist_node *n;
+		hlist_for_each_entry_safe(pos, n, &peer_hash[i], hnode) {
+			if (!id_is_eq(pos->id, smac) && !id_is_eq(pos->id, dmac)) {
+				//TODO random select
+				memcpy(relay_id, pos->id, 6);
+				return 0;
+			}
+		}
+	}
+
+	return -1;
+}
+
+int endpoint_relay_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
+{
+	endpoint_buffer_t *eb;
+
+	//send to ktun
+	eb = malloc(sizeof(endpoint_buffer_t));
+	memset(eb, 0, sizeof(endpoint_buffer_t));
+
+	memcpy(eb->dmac, id, 6);
+	eb->ptype = 2;
+	eb->endpoint = endpoint;
+	eb->repeat = 30;
+	eb->addr = endpoint->ktun_addr;
+	eb->port = endpoint->ktun_port;
+
+	//[KTUN_P_MAGIC|0x00000006|smac|dmac] smac tell ktun I want relay to dmac
+	eb->buf.idx = 0;
+	eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
+	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
+	set_byte4(eb->buf.data + 4, htonl(0x00000006));
+	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
+	set_byte6(eb->buf.data + 4 + 4 + 6, id); //dmac
+
+	eb->recycle = default_eb_recycle;
+	dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
+
+	ev_io_start(EV_A_ & endpoint->send_ctx->io);
 
 	return 0;
 }

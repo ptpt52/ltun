@@ -32,6 +32,7 @@ typedef struct rawkcp_t {
 	endpoint_t *endpoint;
 	struct server_t *server;
 	struct local_t *local;//fake local
+	struct rawkcp_t *rawkcp;
 	buffer_t *buf;
 	void (*handshake)(EV_P_ struct rawkcp_t *rkcp);
 } rawkcp_t;

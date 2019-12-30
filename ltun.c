@@ -208,7 +208,7 @@ static int ltun_select_remote_id(unsigned char *remote_id)
 	return 0;
 }
 
-static unsigned int rawkcp_conv_alloc(int type)
+unsigned int rawkcp_conv_alloc(int type)
 {
 	/* conv low range [1,0x7fffffff]
 	 * conv high range [0x80000001,0xffffffff]
