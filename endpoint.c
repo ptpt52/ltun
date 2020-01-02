@@ -47,7 +47,7 @@ void peer_detach_pipe(peer_t *peer, pipe_t *pipe);
 
 void pipe_timeout_call(EV_P_ pipe_t *pipe);
 void close_and_free_pipe(EV_P_ pipe_t *pipe);
-pipe_t *new_pipe(__be32 ip, __be16 port, peer_t *peer);
+pipe_t *new_pipe(__be32 ip, __be16 port, peer_t *peer, unsigned char *id);
 int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id);
 
 void default_eb_recycle(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb)
@@ -86,6 +86,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 	struct sockaddr_in addr;
 	int addr_len = sizeof(addr);
 	int fd;
+	unsigned char remote_id[16];
 
 	endpoint_ctx_t *recv_ctx = (endpoint_ctx_t *)w;
 	endpoint_t *endpoint = recv_ctx->endpoint;
@@ -109,9 +110,14 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 	}
 
 	endpoint->buf->len = r;
+	if (endpoint->buf->len <= 32) {
+		return;
+	}
+	get_byte16(endpoint->buf->data, remote_id);
+	endpoint->buf->idx = 32;
 
-	if (endpoint->buf->len >= 8 && get_byte4(endpoint->buf->data) == htonl(KTUN_P_MAGIC)) {
-		int cmd = get_byte4(endpoint->buf->data + 4);
+	if (endpoint->buf->len >= 32 + 8 && get_byte4(endpoint->buf->data + endpoint->buf->idx) == htonl(KTUN_P_MAGIC)) {
+		int cmd = get_byte4(endpoint->buf->data + endpoint->buf->idx + 4);
 		if (cmd == htonl(0x00000003) || cmd == htonl(0x10000003) ||
 				cmd == htonl(0x00000005) || cmd == htonl(0x10000005)) {
 			//got 0x00000003 connection ready.
@@ -127,8 +133,8 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				ptype = 1;
 			}
 
-			get_byte16(endpoint->buf->data + 4 + 4, smac);
-			get_byte16(endpoint->buf->data + 4 + 4 + 16, dmac);
+			get_byte16(endpoint->buf->data + endpoint->buf->idx + 4 + 4, smac);
+			get_byte16(endpoint->buf->data + endpoint->buf->idx + 4 + 4 + 16, dmac);
 			if (id_is_eq(endpoint->id, dmac)) {
 				rawkcp_t *pos;
 				struct hlist_node *n;
@@ -164,10 +170,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					}
 				}
 
-				pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
+				pipe = endpoint_peer_pipe_lookup(remote_id);
 				if (pipe == NULL) {
 					int ret;
-					pipe = new_pipe(addr.sin_addr.s_addr, addr.sin_port, peer);
+					pipe = new_pipe(addr.sin_addr.s_addr, addr.sin_port, peer, smac);
 					peer_attach_pipe(peer, pipe, ptype);
 
 					if (verbose) {
@@ -202,11 +208,13 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 						//[KTUN_P_MAGIC|0x10000004|smac|dmac] smac reply to dmac connection ok
 						eb->buf.idx = 0;
-						eb->buf_len = eb->buf.len = 4 + 4 + 16 + 16;
-						set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
-						set_byte4(eb->buf.data + 4, htonl(0x00000004));
-						set_byte16(eb->buf.data + 4 + 4, endpoint->id); //smac
-						set_byte16(eb->buf.data + 4 + 4 + 16, peer->id); //dmac
+						eb->buf_len = eb->buf.len = 16 + 16 + 4 + 4 + 16 + 16;
+						set_byte16(eb->buf.data, endpoint->id);
+						set_byte16(eb->buf.data + 16, remote_id);
+						set_byte4(eb->buf.data + 16 + 16, htonl(KTUN_P_MAGIC));
+						set_byte4(eb->buf.data + 16 + 16 + 4, htonl(0x00000004));
+						set_byte16(eb->buf.data + 16 + 16 + 4 + 4, endpoint->id); //smac
+						set_byte16(eb->buf.data + 16 + 16 + 4 + 4 + 16, peer->id); //dmac
 
 						dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
@@ -251,11 +259,13 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 					//[KTUN_P_MAGIC|0x10000003|smac|dmac] smac reply to dmac connection ok
 					eb->buf.idx = 0;
-					eb->buf_len = eb->buf.len = 4 + 4 + 16 + 16;
-					set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
-					set_byte4(eb->buf.data + 4, htonl(ntohl(cmd) | 0x10000000));
-					set_byte16(eb->buf.data + 4 + 4, endpoint->id); //smac
-					set_byte16(eb->buf.data + 4 + 4 + 16, smac); //dmac
+					eb->buf_len = eb->buf.len = 16 + 16 + 4 + 4 + 16 + 16;
+					set_byte16(eb->buf.data, endpoint->id);
+					set_byte16(eb->buf.data + 16, remote_id);
+					set_byte4(eb->buf.data + 16 + 16, htonl(KTUN_P_MAGIC));
+					set_byte4(eb->buf.data + 16 + 16 + 4, htonl(ntohl(cmd) | 0x10000000));
+					set_byte16(eb->buf.data + 16 + 16 + 4 + 4, endpoint->id); //smac
+					set_byte16(eb->buf.data + 16 + 16 + 4 + 4 + 16, smac); //dmac
 
 					dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
@@ -276,14 +286,14 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			//got 0x00000004 keep alive
 			unsigned char smac[16], dmac[16];
 
-			get_byte16(endpoint->buf->data + 4 + 4, smac);
-			get_byte16(endpoint->buf->data + 4 + 4 + 16, dmac);
+			get_byte16(endpoint->buf->data + endpoint->buf->idx + 4 + 4, smac);
+			get_byte16(endpoint->buf->data + endpoint->buf->idx + 4 + 4 + 16, dmac);
 			if (id_is_eq(endpoint->id, dmac)) {
 				peer_t *peer = NULL;
 				pipe_t *pipe = NULL;
 
 				peer = endpoint_peer_lookup(smac);
-				pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
+				pipe = endpoint_peer_pipe_lookup(remote_id);
 				if (pipe && peer) {
 					ev_timer_again(EV_A_ & pipe->watcher);
 					if (verbose) {
@@ -299,10 +309,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			rawkcp_t *rkcp;
 			pipe_t *pipe;
 
-			conv = get_byte4(endpoint->buf->data + 8);
+			conv = get_byte4(endpoint->buf->data + endpoint->buf->idx + 8);
 			conv = ntohl(conv);
 
-			pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
+			pipe = endpoint_peer_pipe_lookup(remote_id);
 			if (pipe == NULL) {
 				return;
 			}
@@ -319,10 +329,10 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			rawkcp_t *rkcp;
 			pipe_t *pipe;
 
-			conv = get_byte4(endpoint->buf->data + 8);
+			conv = get_byte4(endpoint->buf->data + endpoint->buf->idx + 8);
 			conv = ntohl(conv);
 
-			pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
+			pipe = endpoint_peer_pipe_lookup(remote_id);
 			if (pipe == NULL) {
 				return;
 			}
@@ -331,7 +341,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				return;
 			}
 
-			nbytes = get_byte4(endpoint->buf->data + 12);
+			nbytes = get_byte4(endpoint->buf->data + endpoint->buf->idx + 12);
 			rkcp->expect_recv_bytes = ntohl(nbytes);
 
 			if (verbose) {
@@ -385,15 +395,16 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 		rawkcp_t *rkcp;
 		pipe_t *pipe;
 
-		conv = ikcp_getconv(endpoint->buf->data);
+		conv = ikcp_getconv(endpoint->buf->data + endpoint->buf->idx);
 
 		//printf("endpoint: recv msg: conv=%u from=%u.%u.%u.%u:%u\n", conv, NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 
-		pipe = endpoint_peer_pipe_lookup(addr.sin_addr.s_addr, addr.sin_port);
+		pipe = endpoint_peer_pipe_lookup(remote_id);
 		if (pipe == NULL) {
 			if (verbose) {
-				printf("[kcp] %s: conv[%u] endpoint_peer_pipe_lookup fail @=%u.%u.%u.%u:%u\n",
-						__func__, conv, NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
+				printf("[kcp] %s: conv[%u] endpoint_peer_pipe_lookup fail @=%u.%u.%u.%u:%u remote_id=%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x\n",
+						__func__, conv, NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port),
+						remote_id[0], remote_id[1], remote_id[2], remote_id[3], remote_id[4], remote_id[5], remote_id[6], remote_id[7], remote_id[8], remote_id[9], remote_id[10], remote_id[11], remote_id[12], remote_id[13], remote_id[14], remote_id[15]);
 			}
 			//send pipe reset
 			do {
@@ -407,10 +418,12 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				//[KTUN_P_MAGIC|0x10000003|reset-kcp-pipe|conv] reply reset-kcp
 				eb->buf.idx = 0;
-				eb->buf_len = eb->buf.len = 4 + 4 + 4;
-				set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
-				set_byte4(eb->buf.data + 4, htonl(0x106b6370)); // reset kcp pipe
-				set_byte4(eb->buf.data + 4 + 4, htonl(conv)); //conv
+				eb->buf_len = eb->buf.len = 16 + 16 + 4 + 4 + 4;
+				set_byte16(eb->buf.data, endpoint->id);
+				set_byte16(eb->buf.data + 16, remote_id);
+				set_byte4(eb->buf.data + 16 + 16, htonl(KTUN_P_MAGIC));
+				set_byte4(eb->buf.data + 16 + 16 + 4, htonl(0x106b6370)); // reset kcp pipe
+				set_byte4(eb->buf.data + 16 + 16 + 4 + 4, htonl(conv)); //conv
 
 				dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
@@ -435,7 +448,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			ev_timer_start(EV_A_ & rkcp->watcher);
 		}
 
-		int ret = ikcp_input(rkcp->kcp, (const char *)endpoint->buf->data, endpoint->buf->len);
+		int ret = ikcp_input(rkcp->kcp, (const char *)endpoint->buf->data + endpoint->buf->idx, endpoint->buf->len - endpoint->buf->idx);
 		if (ret < 0) {
 			if (verbose) {
 				printf("[kcp]: %s: conv[%u] ikcp_input failed [%d]\n", __func__, conv, ret);
@@ -1104,11 +1117,13 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 
 	//[KTUN_P_MAGIC|0x00000003|smac|dmac] smac tell dmac I am connecting to dmac
 	eb->buf.idx = 0;
-	eb->buf_len = eb->buf.len = 4 + 4 + 16 + 16;
-	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
-	set_byte4(eb->buf.data + 4, htonl(0x00000003));
-	set_byte16(eb->buf.data + 4 + 4, endpoint->id); //smac
-	set_byte16(eb->buf.data + 4 + 4 + 16, id); //dmac
+	eb->buf_len = eb->buf.len = 16 + 16 + 4 + 4 + 16 + 16;
+	set_byte16(eb->buf.data, endpoint->id);
+	set_byte16(eb->buf.data + 16, id);
+	set_byte4(eb->buf.data + 16 + 16, htonl(KTUN_P_MAGIC));
+	set_byte4(eb->buf.data + 16 + 16 + 4, htonl(0x00000003));
+	set_byte16(eb->buf.data + 16 + 16 + 4 + 4, endpoint->id); //smac
+	set_byte16(eb->buf.data + 16 + 16 + 4 + 4 + 16, id); //dmac
 
 	eb->recycle = default_eb_recycle;
 	dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
@@ -1207,13 +1222,14 @@ static void pipe_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 	pipe_timeout_call(EV_A_ pipe);
 }
 
-pipe_t *new_pipe(__be32 ip, __be16 port, peer_t *peer)
+pipe_t *new_pipe(__be32 ip, __be16 port, peer_t *peer, unsigned char *id)
 {
 	pipe_t *pipe;
 
 	pipe = malloc(sizeof(pipe_t));
 	memset(pipe, 0, sizeof(pipe_t));
 	INIT_HLIST_NODE(&pipe->hnode);
+	set_byte16(pipe->id, id);
 	pipe->addr = ip;
 	pipe->port = port;
 	pipe->peer = get_peer(peer);
@@ -1259,17 +1275,19 @@ pipe_t *endpoint_peer_pipe_select(peer_t *peer)
 	return NULL;
 }
 
-pipe_t *endpoint_peer_pipe_lookup(__be32 addr, __be16 port)
+pipe_t *endpoint_peer_pipe_lookup(unsigned char *id)
 {
 	unsigned int hash;
 	pipe_t *pos;
 	struct hlist_head *head;
 	
-	hash = jhash_2words(addr, port, peer_pipe_rnd) % peer_pipe_hash_size;
+	hash = jhash_2words(*(unsigned int *)&id[0],
+			jhash_3words(*(unsigned int *)&id[4], *(unsigned int *)&id[8], *(unsigned int *)&id[12], 0),
+			peer_pipe_rnd) % peer_pipe_hash_size;
 	head = &peer_pipe_hash[hash];
 
 	hlist_for_each_entry(pos, head, hnode) {
-		if (pos->addr == addr && pos->port == port) {
+		if (id_is_eq(id, pos->id)) {
 			return pos;
 		}
 	}
@@ -1282,12 +1300,15 @@ int endpoint_peer_pipe_insert(pipe_t *pipe)
 	unsigned int hash;
 	pipe_t *pos;
 	struct hlist_head *head;
+	unsigned char *id = pipe->id;
 	
-	hash = jhash_2words(pipe->addr, pipe->port, peer_pipe_rnd) % peer_pipe_hash_size;
+	hash = jhash_2words(*(unsigned int *)&id[0],
+			jhash_3words(*(unsigned int *)&id[4], *(unsigned int *)&id[8], *(unsigned int *)&id[12], 0),
+			peer_pipe_rnd) % peer_pipe_hash_size;
 	head = &peer_pipe_hash[hash];
 
 	hlist_for_each_entry(pos, head, hnode) {
-		if (pos->addr == pipe->addr && pos->port == pipe->port) {
+		if (id_is_eq(id, pos->id)) {
 			//found
 			return -1;
 		}

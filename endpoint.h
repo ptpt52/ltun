@@ -78,6 +78,7 @@ typedef struct pipe_t {
 	ev_timer watcher;
 	struct hlist_node hnode;
 	int stage;
+	unsigned char id[16];
 	__be32 addr;
 	__be16 port;
 	struct peer_t *peer;
@@ -222,7 +223,7 @@ extern int endpoint_peer_insert(peer_t *peer);
 extern int endpoint_peer_pipe_init(void);
 extern void endpoint_peer_pipe_exit(void);
 extern pipe_t *endpoint_peer_pipe_select(peer_t *peer);
-extern pipe_t *endpoint_peer_pipe_lookup(__be32 addr, __be16 port);
+extern pipe_t *endpoint_peer_pipe_lookup(unsigned char *id);
 extern int endpoint_peer_pipe_insert(pipe_t *pipe);
 
 extern endpoint_t *endpoint_init(EV_P_ const unsigned char *id, const char *local_udp_port);

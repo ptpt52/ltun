@@ -135,6 +135,7 @@ rawkcp_t *rawkcp_lookup(unsigned int conv, const unsigned char *remote_id)
 
 int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
+	unsigned char *ptr = (unsigned char *)(buf - 32);
 	rawkcp_t *rkcp = (rawkcp_t *)user;
 	peer_t *peer = rkcp->peer;
 	pipe_t *pipe;
@@ -167,7 +168,10 @@ int rawkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 		addr.sin_port = pipe->port;
 		addr.sin_addr.s_addr = pipe->addr;
 
-		s = sendto(rkcp->endpoint->fd, buf, len, 0, (const struct sockaddr *)&addr, sizeof(addr));
+		len += 32;
+		set_byte16(ptr, rkcp->endpoint->id);
+		set_byte16(ptr + 16, rkcp->remote_id);
+		s = sendto(rkcp->endpoint->fd, ptr, len, 0, (const struct sockaddr *)&addr, sizeof(addr));
 
 		if (s == -1) {
 			if (errno != EAGAIN && errno != EWOULDBLOCK) {
