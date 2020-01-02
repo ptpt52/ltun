@@ -96,11 +96,13 @@ int rawkcp_insert(rawkcp_t *rkcp)
 	rawkcp_t *pos;
 	struct hlist_head *head;
 	
-	hash = jhash_3words(rkcp->conv, get_byte4(&rkcp->remote_id[0]), get_byte2(&rkcp->remote_id[4]), rawkcp_rnd) % rawkcp_hash_size;
+	hash = jhash_3words(rkcp->conv, get_byte4(&rkcp->remote_id[0]),
+			jhash_3words(get_byte2(&rkcp->remote_id[4]), get_byte2(&rkcp->remote_id[8]), get_byte2(&rkcp->remote_id[12]), 0),
+			rawkcp_rnd) % rawkcp_hash_size;
 	head = &rawkcp_hash[hash];
 
 	hlist_for_each_entry(pos, head, hnode) {
-		if (pos->conv == rkcp->conv && memcmp(pos->remote_id, rkcp->remote_id, 6) == 0) {
+		if (pos->conv == rkcp->conv && id_is_eq(pos->remote_id, rkcp->remote_id)) {
 			//found
 			return -1;
 		}
@@ -117,11 +119,13 @@ rawkcp_t *rawkcp_lookup(unsigned int conv, const unsigned char *remote_id)
 	rawkcp_t *pos;
 	struct hlist_head *head;
 	
-	hash = jhash_3words(conv, get_byte4(&remote_id[0]), get_byte2(&remote_id[4]), rawkcp_rnd) % rawkcp_hash_size;
+	hash = jhash_3words(conv, get_byte4(&remote_id[0]),
+			jhash_3words(get_byte2(&remote_id[4]), get_byte2(&remote_id[8]), get_byte2(&remote_id[12]), 0),
+			rawkcp_rnd) % rawkcp_hash_size;
 	head = &rawkcp_hash[hash];
 
 	hlist_for_each_entry(pos, head, hnode) {
-		if (pos->conv == conv && memcmp(pos->remote_id, remote_id, 6) == 0) {
+		if (pos->conv == conv && id_is_eq(pos->remote_id, remote_id)) {
 			return pos;
 		}
 	}

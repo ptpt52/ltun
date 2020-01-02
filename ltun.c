@@ -42,11 +42,11 @@
 
 char *local_port = "0";
 const char *local_host = "127.0.0.1";
-unsigned char local_mac[6] = {0,0,0,0,0,0};
+unsigned char local_mac[16] = {0};
 
 char *target_port = "443";
 const char *target_host = "127.0.0.1";
-unsigned char target_mac[6] = {0,0,0,0,0,0};
+unsigned char target_mac[16] = {0};
 
 char *local_udp_port = "0";
 char *target_udp_port = "0";
@@ -217,10 +217,7 @@ int create_and_bind(const char *host, const char *port)
 
 static int ltun_select_remote_id(unsigned char *remote_id)
 {
-	if (target_mac[0] == 0 && target_mac[1] == 0 && target_mac[2] == 0 && target_mac[3] == 0 && target_mac[4] == 0 && target_mac[5] == 0) {
-		return -1;
-	}
-	memcpy(remote_id, target_mac, 6);
+	set_byte16(remote_id, target_mac);
 	return 0;
 }
 
@@ -846,7 +843,7 @@ rawkcp_t *new_rawkcp(unsigned int conv, const unsigned char *remote_id)
 	INIT_HLIST_NODE(&rkcp->hnode);
 	rkcp->conv = conv;
 	rkcp->kcp = ikcp_create(rkcp->conv, rkcp);
-	memcpy(rkcp->remote_id, remote_id, 6);
+	set_byte16(rkcp->remote_id, remote_id);
 	rkcp->buf = malloc(sizeof(buffer_t));
 	rkcp->buf->len = 0;
 	rkcp->buf->idx = 0;
@@ -1174,7 +1171,7 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 	ev_timer_start(EV_A_ & server->watcher);
 
 	if (server->stage == STAGE_INIT) {
-		unsigned char remote_id[6];
+		unsigned char remote_id[16];
 		if (ltun_select_remote_id(remote_id) != 0) {
 			printf("not remote_id found\n");
 			close_and_free_server(EV_A_ server);
@@ -1207,26 +1204,32 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 static void parse_optarg_mac(unsigned char *mac, const char *optarg)
 {
 	int n;
-	unsigned int a, b, c, d, e, f;
-	n = sscanf(optarg, "%02x:%02x:%02x:%02x:%02x:%02x", &a, &b, &c, &d, &e, &f);
-	if (n != 6)
-		n = sscanf(optarg, "%02x-%02x-%02x-%02x-%02x-%02x", &a, &b, &c, &d, &e, &f);
-	if (n == 6) {
-		if ((a & 0xff) == a &&
-				(b & 0xff) == b &&
-				(c & 0xff) == c &&
-				(d & 0xff) == d &&
-				(e & 0xff) == e &&
-				(f & 0xff) == f) {
-			mac[0] = a;
-			mac[1] = b;
-			mac[2] = c;
-			mac[3] = d;
-			mac[4] = e;
-			mac[5] = f;
+	unsigned int x[16];
+	//123e4567-e89b-12d3-a456-426655440000
+	n = sscanf(optarg, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+			&x[0], &x[1], &x[2], &x[3], &x[4], &x[5], &x[6], &x[7],
+			&x[8], &x[9], &x[10], &x[11], &x[12], &x[13], &x[14], &x[15]);
+	if (n == 16) {
+		int i;
+		for (i = 0; i < 16; i++) {
+			mac[i] = x[i];
 		}
 	}
 }
+
+#ifdef LTUN_LIB
+struct ev_loop *g_loop = NULL;
+void ltun_service_stop(void)
+{
+	if (g_loop) {
+		ltun_call_exit(g_loop);
+	}
+}
+
+int ltun_service_start(char *s_local_host, char *s_local_port, char *s_local_mac,
+		char *s_target_host, char *s_target_port, char *s_target_mac,
+		char *s_local_udp_port, char *s_target_udp_port, char *s_timeout, int i_verbose)
+#else
 
 static void usage()
 {
@@ -1248,19 +1251,6 @@ static void usage()
 	printf("\n");
 }
 
-#ifdef LTUN_LIB
-struct ev_loop *g_loop = NULL;
-void ltun_service_stop(void)
-{
-	if (g_loop) {
-		ltun_call_exit(g_loop);
-	}
-}
-
-int ltun_service_start(char *s_local_host, char *s_local_port, char *s_local_mac,
-		char *s_target_host, char *s_target_port, char *s_target_mac,
-		char *s_local_udp_port, char *s_target_udp_port, char *s_timeout, int i_verbose)
-#else
 int main(int argc, char **argv)
 #endif
 {
@@ -1344,11 +1334,6 @@ int main(int argc, char **argv)
 
 	conn_timeout = atoi(timeout);
 
-	if (local_mac[0] == 0 && local_mac[1] == 0 && local_mac[2] == 0 && local_mac[3] == 0 && local_mac[4] == 0 && local_mac[5] == 0) {
-		usage();
-		exit(EXIT_FAILURE);
-	}
-
 #ifdef LTUN_LIB
 	//no signal handle
 #else
@@ -1369,8 +1354,12 @@ int main(int argc, char **argv)
 	g_loop = loop;
 #endif
 
-	printf("local_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", local_mac[0], local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5]);
-	printf("target_mac: %02x:%02x:%02x:%02x:%02x:%02x\n", target_mac[0], target_mac[1], target_mac[2], target_mac[3], target_mac[4], target_mac[5]);
+	printf("local_mac: %02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x\n",
+			local_mac[0], local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5], local_mac[6], local_mac[7],
+			local_mac[6], local_mac[9], local_mac[10], local_mac[11], local_mac[12], local_mac[13], local_mac[14], local_mac[15]);
+	printf("target_mac: %02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x\n",
+			target_mac[0], target_mac[1], target_mac[2], target_mac[3], target_mac[4], target_mac[5], target_mac[6], target_mac[7],
+			target_mac[8], target_mac[9], target_mac[10], target_mac[11], target_mac[12], target_mac[13], target_mac[14], target_mac[15]);
 	if (endpoint_getaddrinfo(target_host, target_port, &_target_ip, &_target_port) != 0) {
 		//TODO
 		FATAL("endpoint_getaddrinfo");

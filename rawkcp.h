@@ -26,7 +26,7 @@ typedef struct rawkcp_t {
 
 	ikcpcb *kcp;
 	unsigned int conv;
-	unsigned char remote_id[6];
+	unsigned char remote_id[16];
 
 	peer_t *peer;
 	endpoint_t *endpoint;

@@ -52,7 +52,7 @@ typedef struct endpoint_t {
 
 	int fd;
 	int ticks;
-	unsigned char id[6];
+	unsigned char id[16];
 
 	buffer_t *buf;
 
@@ -67,7 +67,7 @@ typedef struct endpoint_t {
 typedef struct peer_t {
 	struct hlist_node hnode;
 	unsigned int use;
-	unsigned char id[6];
+	unsigned char id[16];
 	__be16 port;
 	__be32 addr;
 	struct pipe_t *pipe[3];
@@ -88,7 +88,7 @@ typedef struct endpoint_buffer_t {
 	struct dlist_head list;
 	endpoint_t *endpoint;
 	void (*recycle)(EV_P_ endpoint_t *endpoint, struct endpoint_buffer_t *eb);
-	unsigned char dmac[6];
+	unsigned char dmac[16];
 	int ptype;
 	int repeat;
 	int interval;
@@ -156,20 +156,27 @@ static inline void get_byte6(const unsigned char *p, unsigned char *pv)
     memcpy(pv, p, 6);
 }
 
+static inline void set_byte16(unsigned char *p, const unsigned char *pv)
+{
+    memcpy(p, pv, 16);
+}
+
+static inline void get_byte16(const unsigned char *p, unsigned char *pv)
+{
+    memcpy(pv, p, 16);
+}
+
+
 static inline int id_is_gt(const unsigned char *id1, const unsigned char *id2)
 {
-	unsigned int ai, bi;
-	unsigned short as, bs;
+	int i;
 
-	ai = get_byte4(id1);
-	bi = get_byte4(id2);
-	if (ntohl(ai) > ntohl(bi)) {
-		return 1;
-	}
-	as = get_byte2(id1 + 4);
-	bs = get_byte2(id2 + 4);
-	if (ntohs(as) > ntohs(bs)) {
-		return 1;
+	for (i = 0; i < 16; i++) {
+		if (id1[i] > id2[i]) {
+			return 1;
+		} else if (id1[i] < id2[i]) {
+			return 0;
+		}
 	}
 
 	return 0;
@@ -177,12 +184,22 @@ static inline int id_is_gt(const unsigned char *id1, const unsigned char *id2)
 
 static inline int id_is_lt(const unsigned char *id1, const unsigned char *id2)
 {
-	return id_is_gt(id2, id1);
+	int i;
+
+	for (i = 0; i < 16; i++) {
+		if (id1[i] < id2[i]) {
+			return 1;
+		} else if (id1[i] > id2[i]) {
+			return 0;
+		}
+	}
+
+	return 0;
 }
 
 static inline int id_is_eq(const unsigned char *id1, const unsigned char *id2)
 {
-	return memcmp(id1, id2, 6) == 0;
+	return memcmp(id1, id2, 16) == 0;
 }
 
 extern unsigned int rawkcp_conv_alloc(int type);
@@ -193,8 +210,6 @@ extern unsigned int rawkcp_conv_alloc(int type);
 extern endpoint_t *endpoint_new(int fd);
 extern int endpoint_create_fd(const char *host, const char *port);
 extern int endpoint_getaddrinfo(const char *host, const char *port, __be32 *real_addr, __be16 *real_port);
-
-extern int endpoint_select_relay_id(const unsigned char *smac, const unsigned char *dmac, unsigned char *relay_id);
 
 extern peer_t *endpoint_peer_lookup(unsigned char *id);
 extern int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id);

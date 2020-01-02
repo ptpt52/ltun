@@ -119,7 +119,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 			//or got 0x10000003/0x10000005 connection reply
 			//0x00000003: in-comming connection: smac, dmac
 			int ptype = 0;
-			unsigned char smac[6], dmac[6];
+			unsigned char smac[16], dmac[16];
 
 			if (cmd == htonl(0x00000005) || cmd == htonl(0x10000005)) {
 				ptype = 0;
@@ -127,18 +127,18 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				ptype = 1;
 			}
 
-			get_byte6(endpoint->buf->data + 4 + 4, smac);
-			get_byte6(endpoint->buf->data + 4 + 4 + 6, dmac);
-			if (memcmp(endpoint->id, dmac, 6) == 0) {
+			get_byte16(endpoint->buf->data + 4 + 4, smac);
+			get_byte16(endpoint->buf->data + 4 + 4 + 16, dmac);
+			if (id_is_eq(endpoint->id, dmac)) {
 				rawkcp_t *pos;
 				struct hlist_node *n;
 				peer_t *peer = NULL;
 				pipe_t *pipe = NULL;
 
 				if (verbose) {
-					printf("[endpoint]: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X from=%u.%u.%u.%u:%u new connection in\n",
-							smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
-							dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
+					printf("[endpoint]: smac=%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x dmac=%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x from=%u.%u.%u.%u:%u new connection in\n",
+							smac[0], smac[1], smac[2], smac[3], smac[4], smac[5], smac[6], smac[7], smac[8], smac[9], smac[10], smac[11], smac[12], smac[13], smac[14], smac[15],
+							dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5], dmac[6], dmac[7], dmac[8], dmac[9], dmac[10], dmac[11], dmac[12], dmac[13], dmac[14], dmac[15],
 							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 				}
 
@@ -148,12 +148,12 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					peer = malloc(sizeof(peer_t));
 					memset(peer, 0, sizeof(peer_t));
 					INIT_HLIST_NODE(&peer->hnode);
-					memcpy(peer->id, smac, 6);
+					set_byte16(peer->id, smac);
 					peer->endpoint = endpoint;
 
 					if (verbose) {
-						printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create peer\n",
-								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
+						printf("[endpoint]: peer=%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x @=%u.%u.%u.%u:%u create peer\n",
+								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5], peer->id[6], peer->id[7], peer->id[8], peer->id[9], peer->id[10], peer->id[11], peer->id[12], peer->id[13], peer->id[14], peer->id[15],
 								NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 					}
 					get_peer(peer);
@@ -171,8 +171,8 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 					peer_attach_pipe(peer, pipe, ptype);
 
 					if (verbose) {
-						printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create pipe\n",
-								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
+						printf("[endpoint]: peer=%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x @=%u.%u.%u.%u:%u create pipe\n",
+								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5], peer->id[6], peer->id[7], peer->id[8], peer->id[9], peer->id[10], peer->id[11], peer->id[12], peer->id[13], peer->id[14], peer->id[15],
 								NIPV4_ARG(pipe->addr), ntohs(pipe->port));
 					}
 
@@ -202,11 +202,11 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 						//[KTUN_P_MAGIC|0x10000004|smac|dmac] smac reply to dmac connection ok
 						eb->buf.idx = 0;
-						eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
+						eb->buf_len = eb->buf.len = 4 + 4 + 16 + 16;
 						set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
 						set_byte4(eb->buf.data + 4, htonl(0x00000004));
-						set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
-						set_byte6(eb->buf.data + 4 + 4 + 6, peer->id); //dmac
+						set_byte16(eb->buf.data + 4 + 4, endpoint->id); //smac
+						set_byte16(eb->buf.data + 4 + 4 + 16, peer->id); //dmac
 
 						dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
@@ -220,7 +220,7 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 				hlist_for_each_entry_safe(pos, n, &endpoint->rawkcp_head, hnode) {
 					int ret;
-					if (memcmp(pos->remote_id, smac, 6) == 0) {
+					if (id_is_eq(pos->remote_id, smac)) {
 						hlist_del(&pos->hnode);
 						pos->peer = get_peer(peer);
 						pos->endpoint = endpoint;
@@ -251,34 +251,34 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 
 					//[KTUN_P_MAGIC|0x10000003|smac|dmac] smac reply to dmac connection ok
 					eb->buf.idx = 0;
-					eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
+					eb->buf_len = eb->buf.len = 4 + 4 + 16 + 16;
 					set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
 					set_byte4(eb->buf.data + 4, htonl(ntohl(cmd) | 0x10000000));
-					set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
-					set_byte6(eb->buf.data + 4 + 4 + 6, smac); //dmac
+					set_byte16(eb->buf.data + 4 + 4, endpoint->id); //smac
+					set_byte16(eb->buf.data + 4 + 4 + 16, smac); //dmac
 
 					dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
 
 					ev_io_start(EV_A_ & endpoint->send_ctx->io);
 				}
-			} else if (memcmp(endpoint->id, smac, 6) == 0) {
+			} else if (id_is_eq(endpoint->id, smac)) {
 				//silence
 			} else {
 				//TODO dmac no me
 				if (verbose) {
-					printf("[endpoint]: smac=%02X:%02X:%02X:%02X:%02X:%02X dmac=%02X:%02X:%02X:%02X:%02X:%02X from=%u.%u.%u.%u:%u unknown packet in\n",
-							smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
-							dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5],
+					printf("[endpoint]: smac=%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x dmac=%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x from=%u.%u.%u.%u:%u unknown packet in\n",
+							smac[0], smac[1], smac[2], smac[3], smac[4], smac[5], smac[6], smac[7], smac[8], smac[9], smac[10], smac[11], smac[12], smac[13], smac[14], smac[15],
+							dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5], dmac[6], dmac[7], dmac[8], dmac[9], dmac[10], dmac[11], dmac[12], dmac[13], dmac[14], dmac[15],
 							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 				}
 			}
 		} else if (cmd == htonl(0x00000004)) {
 			//got 0x00000004 keep alive
-			unsigned char smac[6], dmac[6];
+			unsigned char smac[16], dmac[16];
 
-			get_byte6(endpoint->buf->data + 4 + 4, smac);
-			get_byte6(endpoint->buf->data + 4 + 4 + 6, dmac);
-			if (memcmp(endpoint->id, dmac, 6) == 0) {
+			get_byte16(endpoint->buf->data + 4 + 4, smac);
+			get_byte16(endpoint->buf->data + 4 + 4 + 16, dmac);
+			if (id_is_eq(endpoint->id, dmac)) {
 				peer_t *peer = NULL;
 				pipe_t *pipe = NULL;
 
@@ -287,9 +287,9 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 				if (pipe && peer) {
 					ev_timer_again(EV_A_ & pipe->watcher);
 					if (verbose) {
-						printf("[endpoint]: keepalive from pipe @=%u.%u.%u.%u:%u peer=%02X:%02X:%02X:%02X:%02X:%02X\n",
+						printf("[endpoint]: keepalive from pipe @=%u.%u.%u.%u:%u peer=%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x\n",
 								NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port),
-								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5]);
+								peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5], peer->id[6], peer->id[7], peer->id[8], peer->id[9], peer->id[10], peer->id[11], peer->id[12], peer->id[13], peer->id[14], peer->id[15]);
 					}
 				}
 			}
@@ -1049,11 +1049,13 @@ peer_t *endpoint_peer_lookup(unsigned char *id)
 	peer_t *pos;
 	struct hlist_head *head;
 	
-	hash = jhash_2words(*(unsigned int *)&id[0], *(unsigned short *)&id[4], peer_rnd) % peer_hash_size;
+	hash = jhash_2words(*(unsigned int *)&id[0],
+			jhash_3words(*(unsigned int *)&id[4], *(unsigned int *)&id[8], *(unsigned int *)&id[12], 0),
+			peer_rnd) % peer_hash_size;
 	head = &peer_hash[hash];
 
 	hlist_for_each_entry(pos, head, hnode) {
-		if (memcmp(pos->id, id, 6) == 0) {
+		if (id_is_eq(pos->id, id)) {
 			return pos;
 		}
 	}
@@ -1066,12 +1068,15 @@ int endpoint_peer_insert(peer_t *peer)
 	unsigned int hash;
 	peer_t *pos;
 	struct hlist_head *head;
+	unsigned char *id = peer->id;
 	
-	hash = jhash_2words(get_byte4(&peer->id[0]), get_byte2(&peer->id[4]), peer_rnd) % peer_hash_size;
+	hash = jhash_2words(*(unsigned int *)&id[0],
+			jhash_3words(*(unsigned int *)&id[4], *(unsigned int *)&id[8], *(unsigned int *)&id[12], 0),
+			peer_rnd) % peer_hash_size;
 	head = &peer_hash[hash];
 
 	hlist_for_each_entry(pos, head, hnode) {
-		if (memcmp(pos->id, peer->id, 6) == 0) {
+		if (id_is_eq(pos->id, peer->id)) {
 			//found
 			return -1;
 		}
@@ -1082,24 +1087,6 @@ int endpoint_peer_insert(peer_t *peer)
 	return 0;
 }
 
-int endpoint_select_relay_id(const unsigned char *smac, const unsigned char *dmac, unsigned char *relay_id)
-{
-	int i;
-	for (i = 0; i < peer_hash_size; i++) {
-		peer_t *pos;
-		struct hlist_node *n;
-		hlist_for_each_entry_safe(pos, n, &peer_hash[i], hnode) {
-			if (!id_is_eq(pos->id, smac) && !id_is_eq(pos->id, dmac)) {
-				//TODO random select
-				memcpy(relay_id, pos->id, 6);
-				return 0;
-			}
-		}
-	}
-
-	return -1;
-}
-
 int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 {
 	endpoint_buffer_t *eb;
@@ -1108,7 +1095,7 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	eb = malloc(sizeof(endpoint_buffer_t));
 	memset(eb, 0, sizeof(endpoint_buffer_t));
 
-	memcpy(eb->dmac, id, 6);
+	set_byte16(eb->dmac, id);
 	eb->ptype = 1;
 	eb->endpoint = endpoint;
 	eb->repeat = 30;
@@ -1117,11 +1104,11 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 
 	//[KTUN_P_MAGIC|0x00000003|smac|dmac] smac tell dmac I am connecting to dmac
 	eb->buf.idx = 0;
-	eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
+	eb->buf_len = eb->buf.len = 4 + 4 + 16 + 16;
 	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
 	set_byte4(eb->buf.data + 4, htonl(0x00000003));
-	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
-	set_byte6(eb->buf.data + 4 + 4 + 6, id); //dmac
+	set_byte16(eb->buf.data + 4 + 4, endpoint->id); //smac
+	set_byte16(eb->buf.data + 4 + 4 + 16, id); //dmac
 
 	eb->recycle = default_eb_recycle;
 	dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
@@ -1201,10 +1188,10 @@ void pipe_timeout_call(EV_P_ pipe_t *pipe)
 		pipe->eb->interval = 0;
 
 		if (verbose) {
-			printf("[endpoint]: %s: pipe @=%u.%u.%u.%u:%u peer=%02X:%02X:%02X:%02X:%02X:%02X timeout detach\n",
+			printf("[endpoint]: %s: pipe @=%u.%u.%u.%u:%u peer=%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x timeout detach\n",
 					__func__,
 					NIPV4_ARG(pipe->addr), ntohs(pipe->port),
-					peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5]);
+					peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5], peer->id[6], peer->id[7], peer->id[8], peer->id[9], peer->id[10], peer->id[11], peer->id[12], peer->id[13], peer->id[14], peer->id[15]);
 		}
 
 		endpoint_connect_to_peer(EV_A_ peer->endpoint, peer->id);
@@ -1327,7 +1314,7 @@ endpoint_t *endpoint_init(EV_P_ const unsigned char *id, const char *local_udp_p
 		return NULL;
 	}
 
-	memcpy(endpoint->id, id, 6);
+	set_byte16(endpoint->id, id);
 
 	return endpoint;
 }
