@@ -48,7 +48,6 @@ typedef struct endpoint_ctx {
 typedef struct endpoint_t {
 	ev_timer watcher;
 
-	IUINT32 active_ts;
 	int stage;
 
 	int fd;

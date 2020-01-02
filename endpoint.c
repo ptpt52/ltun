@@ -718,6 +718,8 @@ static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 		addr.sin_addr.s_addr = pos->addr;
 		addr.sin_port = pos->port;
 
+		printf("%s: send to %u.%u.%u.%u:%u\n", __func__, NIPV4_ARG(pos->addr), ntohs(pos->port));
+
 		s = sendto(endpoint->fd, pos->buf.data + pos->buf.idx, pos->buf.len, 0, (const struct sockaddr *)&addr, sizeof(addr));
 		if (s == -1) {
 			//send fail
@@ -752,7 +754,6 @@ static void endpoint_send_cb(EV_P_ ev_io *w, int revents)
 
 static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 {
-	IINT32 slap;
 	int need_send = 0;
 	endpoint_buffer_t *pos, *n;
 	endpoint_t *endpoint = (endpoint_t *)watcher;
@@ -760,13 +761,6 @@ static void endpoint_watcher_send_cb(EV_P_ ev_timer *watcher, int revents)
 	if (endpoint->stage == STAGE_ERROR) {
 		ltun_call_exit(EV_A);
 		return;
-	}
-
-	slap = itimediff(iclock(), endpoint->active_ts);
-	if (slap >= 40000 || slap <= -40000) {
-		if ( (slap/1000 > -60 && slap/1000 < 60) || ((int)(slap/1000)%10 == 0)) {
-			printf("[endpoint] no respose from ktun for %ds\n", slap/1000);
-		}
 	}
 
 	dlist_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
@@ -943,8 +937,6 @@ endpoint_t *new_endpoint(int fd)
 	endpoint->fd = fd;
 	endpoint->recv_ctx->endpoint = endpoint;
 	endpoint->send_ctx->endpoint = endpoint;
-
-	endpoint->active_ts = iclock();
 	
 	ev_io_init(&endpoint->recv_ctx->io, endpoint_recv_cb, endpoint->fd, EV_READ);
 	ev_io_init(&endpoint->send_ctx->io, endpoint_send_cb, endpoint->fd, EV_WRITE);

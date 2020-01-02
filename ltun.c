@@ -1376,6 +1376,10 @@ int main(int argc, char **argv)
 		FATAL("endpoint_getaddrinfo");
 	}
 
+	if (endpoint_getaddrinfo("127.0.0.1", target_udp_port, &_target_udp_ip, &_target_udp_port) != 0) {
+		//TODO
+		FATAL("endpoint_getaddrinfo");
+	}
 	// initialize listen context
 	listen_ctx_t listen_ctx_local;
 
@@ -1411,6 +1415,7 @@ int main(int argc, char **argv)
 	if (default_endpoint == NULL) {
 		goto fail_out;
 	}
+	printf("udp server listening at %u.%u.%u.%u:%u\n", NIPV4_ARG(_local_udp_ip), ntohs(_local_udp_port));
 
 	if (geteuid() == 0) {
 		printf("running from root user\n");
