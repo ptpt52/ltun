@@ -40,18 +40,22 @@
 #define MAXCONN 1024
 #endif
 
-char *ktun = "ec1ns.ptpt52.com";
-char *ktun_port = "910";
-char *bktun = "255.255.255.255";
-char *bktun_port = "1910";
-
 char *local_port = "0";
 const char *local_host = "127.0.0.1";
 unsigned char local_mac[6] = {0,0,0,0,0,0};
 
-char *target_port = "80";
+char *target_port = "443";
 const char *target_host = "127.0.0.1";
 unsigned char target_mac[6] = {0,0,0,0,0,0};
+
+char *local_udp_port = "0";
+char *target_udp_port = "0";
+
+__be16 _local_udp_port = 0;
+__be16 _target_udp_port = 0;
+
+__be32 _local_ip = 0;
+__be16 _local_port = 0;
 
 __be32 _target_ip = 0;
 __be16 _target_port = 0;
@@ -195,6 +199,16 @@ int create_and_bind(const char *host, const char *port)
 	}
 
 	freeaddrinfo(result);
+
+	do {
+		struct sockaddr_storage storage;
+		struct sockaddr_in *addr = (struct sockaddr_in *)&storage;
+		socklen_t len = sizeof(struct sockaddr_storage);
+		memset(addr, 0, len);
+		getsockname(listen_sock, (struct sockaddr *)addr, &len);
+		_local_ip = addr->sin_addr.s_addr;
+		_local_port = addr->sin_port;
+	} while (0);
 
 	return listen_sock;
 }
@@ -1220,13 +1234,13 @@ static void usage()
 	printf("  usage:\n\n");
 	printf("       [-s <local_host>]          Local IP address to bind\n");
 	printf("       [-p <local_port>]          Local Port to bind\n");
-	printf("       [-m <local_mac>]           Local Mac address\n");
+	printf("       [-i <local_id>]            Local ID address\n");
 	printf("       [-S <target_host>]         Target IP address to connect\n");
 	printf("       [-P <target_port>]         Target Port to connect\n");
-	printf("       [-M <target_mac>]          Target Mac address\n");
+	printf("       [-I <target_id>]           Target ID address\n");
 	printf("       [-t <timeout>]             Socket timeout in seconds.\n");
-	printf("       [-k <ktun>]                Ktun server\n");
-	printf("       [-K]                       Run as ktun server\n");
+	printf("       [-u <local_udp_port>]      Local Peer UDP port\n");
+	printf("       [-U <target_udp_port>]     Target Peer UDP port\n");
 	printf("       [-v]                       Verbose mode.\n");
 	printf("       [-h, --help]               Print this message.\n");
 	printf("\n");
@@ -1243,13 +1257,12 @@ void ltun_service_stop(void)
 
 int ltun_service_start(char *s_local_host, char *s_local_port, char *s_local_mac,
 		char *s_target_host, char *s_target_port, char *s_target_mac,
-		char *s_timeout, char *s_ktun, int i_verbose)
+		char *s_local_udp_port, char *s_target_udp_port, char *s_timeout, int i_verbose)
 #else
 int main(int argc, char **argv)
 #endif
 {
 	char *timeout = NULL;
-	int ktun_server = 0;
 
     srand(time(NULL));
 
@@ -1264,13 +1277,18 @@ int main(int argc, char **argv)
 	if (s_target_mac) {
 		parse_optarg_mac(target_mac, s_target_mac);
 	}
+	if (s_local_udp_port) {
+		local_udp_port = s_local_udp_port;
+	}
+	if (s_target_udp_port) {
+		target_udp_port = s_target_udp_port;
+	}
 	timeout = s_timeout;
 	verbose = i_verbose;
-	ktun = s_ktun;
 #else
 	int c;
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "s:p:m:S:P:M:t:k:Khv", NULL, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "s:p:i:S:P:I:t:u:U:hv", NULL, NULL)) != -1) {
 		switch (c) {
 			case 's':
 				local_host = optarg;
@@ -1278,7 +1296,7 @@ int main(int argc, char **argv)
 			case 'p':
 				local_port = optarg;
 				break;
-			case 'm':
+			case 'i':
 				parse_optarg_mac(local_mac, optarg);
 				break;
 			case 'S':
@@ -1287,20 +1305,20 @@ int main(int argc, char **argv)
 			case 'P':
 				target_port = optarg;
 				break;
-			case 'M':
+			case 'I':
 				parse_optarg_mac(target_mac, optarg);
+				break;
+			case 'u':
+				local_udp_port = optarg;
+				break;
+			case 'U':
+				target_udp_port = optarg;
 				break;
 			case 't':
 				timeout = optarg;
 				break;
 			case 'v':
 				verbose = 1;
-				break;
-			case 'k':
-				ktun = optarg;
-				break;
-			case 'K':
-				ktun_server = 1;
 				break;
 			case 'h':
 				usage();
@@ -1323,10 +1341,6 @@ int main(int argc, char **argv)
 	}
 
 	conn_timeout = atoi(timeout);
-
-	if (ktun == NULL) {
-		ktun = "ec1ns.ptpt52.com";
-	}
 
 	if (local_mac[0] == 0 && local_mac[1] == 0 && local_mac[2] == 0 && local_mac[3] == 0 && local_mac[4] == 0 && local_mac[5] == 0) {
 		usage();
@@ -1365,11 +1379,9 @@ int main(int argc, char **argv)
 
 	// bind to each interface
 	if (atoi(local_port) != 0) {
-		const char *host = local_host;
-
 		// Bind to port
 		int listenfd;
-		listenfd = create_and_bind(host, local_port);
+		listenfd = create_and_bind(local_host, local_port);
 		if (listenfd == -1) {
 			FATAL("bind() error");
 		}
@@ -1386,29 +1398,23 @@ int main(int argc, char **argv)
 		ev_io_init(&listen_ctx->io, accept_cb, listenfd, EV_READ);
 		ev_io_start(loop, &listen_ctx->io);
 
-		printf("tcp server listening at %s:%s\n", host, local_port);
+		printf("tcp server listening at %u.%u.%u.%u:%u\n", NIPV4_ARG(_local_ip), ntohs(_local_port));
 	}
 
 	endpoint_peer_pipe_init();
 	endpoint_peer_init();
 	__rawkcp_init();
 
-	default_endpoint = endpoint_init(loop, local_mac, ktun, ktun_port, bktun, bktun_port, ktun_server);
+	default_endpoint = endpoint_init(loop, local_mac);
 	if (default_endpoint == NULL) {
 		goto fail_out;
 	}
-	printf("ktun_addr=%u.%u.%u.%u ktun_port=%u\n", NIPV4_ARG(default_endpoint->ktun_addr), ntohs(default_endpoint->ktun_port));
-	printf("bktun_addr=%u.%u.%u.%u bktun_port=%u\n", NIPV4_ARG(default_endpoint->broadcast_addr), ntohs(default_endpoint->broadcast_port));
 
 	if (geteuid() == 0) {
 		printf("running from root user\n");
 	}
 
 	// start ev loop
-	if (ktun_server) {
-		ev_io_start(loop, &default_endpoint->ktun_recv_ctx->io);
-	}
-	ev_io_start(loop, &default_endpoint->broadcast_recv_ctx->io);
 	ev_io_start(loop, &default_endpoint->recv_ctx->io);
 	ev_timer_start(EV_A_ & default_endpoint->watcher);
 	ev_run(loop, 0);

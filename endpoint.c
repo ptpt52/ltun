@@ -81,271 +81,6 @@ void endpoint_buffer_recycle(EV_P_ endpoint_t *endpoint, endpoint_buffer_t *eb)
 	}
 }
 
-
-static void endpoint_ktun_recv_cb(EV_P_ ev_io *w, int revents)
-{
-	struct sockaddr_in addr;
-	int addr_len = sizeof(addr);
-
-	endpoint_ctx_t *recv_ctx = (endpoint_ctx_t *)w;
-	endpoint_t *endpoint = recv_ctx->endpoint;
-
-	ssize_t r = recvfrom(endpoint->ktun_fd, endpoint->buf->data, BUF_SIZE, 0, (struct sockaddr*) &addr, (socklen_t *) &addr_len);
-
-	if (r == 0) {
-		ev_io_stop(EV_A_ w);
-		endpoint->stage = STAGE_ERROR;
-		return;
-	} else if (r == -1) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-			return;
-		} else {
-			ev_io_stop(EV_A_ w);
-			endpoint->stage = STAGE_ERROR;
-			return;
-		}
-	}
-
-	endpoint->buf->len = r;
-
-	if (endpoint->buf->len >= 8 && get_byte4(endpoint->buf->data) == htonl(KTUN_P_MAGIC)) {
-		int cmd = get_byte4(endpoint->buf->data + 4);
-		if (cmd == htonl(0x00000001)) {
-			//reply
-			//0x10010001: resp=1, ret=001, code=0001 listen fail: smac, ip, port
-			//0x10020001: resp=1, ret=002, code=0001 listen ok:   smac, ip, port
-			peer_t *peer;
-			unsigned char smac[6];
-
-			get_byte6(endpoint->buf->data + 4 + 4, smac);
-
-			peer = endpoint_peer_lookup(smac);
-			if (peer == NULL) {
-				int ret;
-				peer = malloc(sizeof(peer_t));
-				memset(peer, 0, sizeof(peer_t));
-				INIT_HLIST_NODE(&peer->hnode);
-				memcpy(peer->id, smac, 6);
-				peer->endpoint = endpoint;
-
-				if (verbose) {
-					printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create peer\n",
-							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
-							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
-				}
-				get_peer(peer);
-				ret = endpoint_peer_insert(peer);
-				if (ret != 0) {
-					put_peer(peer);
-					return;
-				}
-			}
-			if (peer->addr != addr.sin_addr.s_addr)
-				peer->addr = addr.sin_addr.s_addr;
-			if (peer->port != addr.sin_port)
-				peer->port = addr.sin_port;
-
-			do {
-				endpoint->buf->idx = 0;
-				endpoint->buf->len = 4 + 4 + 6 + 4 + 2;
-				set_byte4(endpoint->buf->data, htonl(KTUN_P_MAGIC));
-				set_byte4(endpoint->buf->data + 4, htonl(0x10020001));
-				set_byte6(endpoint->buf->data + 4 + 4, peer->id); //smac
-				set_byte4(endpoint->buf->data + 4 + 4 + 6, peer->addr);
-				set_byte2(endpoint->buf->data + 4 + 4 + 6 + 4, peer->port);
-
-				ssize_t s = sendto(endpoint->ktun_fd, endpoint->buf->data, endpoint->buf->len, 0, (const struct sockaddr *)&addr, sizeof(addr));
-				if (s == -1) {
-					//send fail
-					if (errno != EAGAIN && errno != EWOULDBLOCK) {
-						perror("ktun_send_send");
-					}
-				}
-			} while (0);
-		} else if (cmd == htonl(0x00000006)) {
-			peer_t *peer, *d_peer;
-			unsigned char smac[6];
-			unsigned char dmac[6];
-			unsigned char relay_id[6] = {0,0,0,0,0,0};
-
-			get_byte6(endpoint->buf->data + 4 + 4, smac);
-			get_byte6(endpoint->buf->data + 4 + 4 + 6, dmac);
-
-			peer = endpoint_peer_lookup(smac);
-			if (peer == NULL) {
-				int ret;
-				peer = malloc(sizeof(peer_t));
-				memset(peer, 0, sizeof(peer_t));
-				INIT_HLIST_NODE(&peer->hnode);
-				memcpy(peer->id, smac, 6);
-				peer->endpoint = endpoint;
-
-				if (verbose) {
-					printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create peer\n",
-							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
-							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
-				}
-				get_peer(peer);
-				ret = endpoint_peer_insert(peer);
-				if (ret != 0) {
-					put_peer(peer);
-					return;
-				}
-			}
-			if (peer->addr != addr.sin_addr.s_addr)
-				peer->addr = addr.sin_addr.s_addr;
-			if (peer->port != addr.sin_port)
-				peer->port = addr.sin_port;
-
-			d_peer = endpoint_peer_lookup(dmac);
-			endpoint_select_relay_id(smac, dmac, relay_id);
-			if (d_peer && d_peer->addr && d_peer->port) {
-				do {
-					endpoint->buf->idx = 0;
-					endpoint->buf->len = 4 + 4 + 6 + 6 + 6;
-					set_byte4(endpoint->buf->data, htonl(KTUN_P_MAGIC));
-					set_byte4(endpoint->buf->data + 4, htonl(0x10000006));
-					set_byte6(endpoint->buf->data + 4 + 4, smac); //smac
-					set_byte6(endpoint->buf->data + 4 + 4 + 6, dmac); //dmac
-					set_byte6(endpoint->buf->data + 4 + 4 + 6 + 6, relay_id);
-
-					ssize_t s = sendto(endpoint->ktun_fd, endpoint->buf->data, endpoint->buf->len, 0, (const struct sockaddr *)&addr, sizeof(addr));
-					if (s == -1) {
-						//send fail
-						if (errno != EAGAIN && errno != EWOULDBLOCK) {
-							perror("ktun_send_send");
-						}
-					}
-				} while (0);
-				do {
-					endpoint->buf->idx = 0;
-					endpoint->buf->len = 4 + 4 + 6 + 6 + 4 + 2 + 4 + 2;
-					set_byte4(endpoint->buf->data, htonl(KTUN_P_MAGIC));
-					set_byte4(endpoint->buf->data + 4, htonl(0x10000006));
-					set_byte6(endpoint->buf->data + 4 + 4, dmac); //smac
-					set_byte6(endpoint->buf->data + 4 + 4 + 6, smac); //dmac
-					set_byte6(endpoint->buf->data + 4 + 4 + 6 + 6, relay_id);
-
-					addr.sin_addr.s_addr = d_peer->addr;
-					addr.sin_port = d_peer->port;
-					ssize_t s = sendto(endpoint->ktun_fd, endpoint->buf->data, endpoint->buf->len, 0, (const struct sockaddr *)&addr, sizeof(addr));
-					if (s == -1) {
-						//send fail
-						if (errno != EAGAIN && errno != EWOULDBLOCK) {
-							perror("ktun_send_send");
-						}
-					}
-				} while (0);
-			}
-		} else if (cmd == htonl(0x00000002)) {
-			peer_t *peer, *d_peer;
-			unsigned char smac[6];
-			unsigned char dmac[6];
-
-			get_byte6(endpoint->buf->data + 4 + 4, smac);
-			get_byte6(endpoint->buf->data + 4 + 4 + 6, dmac);
-
-			peer = endpoint_peer_lookup(smac);
-			if (peer == NULL) {
-				int ret;
-				peer = malloc(sizeof(peer_t));
-				memset(peer, 0, sizeof(peer_t));
-				INIT_HLIST_NODE(&peer->hnode);
-				memcpy(peer->id, smac, 6);
-				peer->endpoint = endpoint;
-
-				if (verbose) {
-					printf("[endpoint]: peer=%02X:%02X:%02X:%02X:%02X:%02X @=%u.%u.%u.%u:%u create peer\n",
-							peer->id[0], peer->id[1], peer->id[2], peer->id[3], peer->id[4], peer->id[5],
-							NIPV4_ARG(addr.sin_addr.s_addr), ntohs(addr.sin_port));
-				}
-				get_peer(peer);
-				ret = endpoint_peer_insert(peer);
-				if (ret != 0) {
-					put_peer(peer);
-					return;
-				}
-			}
-			if (peer->addr != addr.sin_addr.s_addr)
-				peer->addr = addr.sin_addr.s_addr;
-			if (peer->port != addr.sin_port)
-				peer->port = addr.sin_port;
-
-			d_peer = endpoint_peer_lookup(dmac);
-			if (d_peer && d_peer->addr && d_peer->port) {
-				do {
-					endpoint->buf->idx = 0;
-					endpoint->buf->len = 4 + 4 + 6 + 6 + 4 + 2 + 4 + 2;
-					set_byte4(endpoint->buf->data, htonl(KTUN_P_MAGIC));
-					set_byte4(endpoint->buf->data + 4, htonl(0x10030002));
-					set_byte6(endpoint->buf->data + 4 + 4, smac); //smac
-					set_byte6(endpoint->buf->data + 4 + 4 + 6, dmac); //dmac
-					set_byte4(endpoint->buf->data + 4 + 4 + 6 + 6, peer->addr);
-					set_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4, peer->port);
-					set_byte4(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2, d_peer->addr);
-					set_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2 + 4, d_peer->port);
-
-					ssize_t s = sendto(endpoint->ktun_fd, endpoint->buf->data, endpoint->buf->len, 0, (const struct sockaddr *)&addr, sizeof(addr));
-					if (s == -1) {
-						//send fail
-						if (errno != EAGAIN && errno != EWOULDBLOCK) {
-							perror("ktun_send_send");
-						}
-					}
-				} while (0);
-				do {
-					endpoint->buf->idx = 0;
-					endpoint->buf->len = 4 + 4 + 6 + 6 + 4 + 2 + 4 + 2;
-					set_byte4(endpoint->buf->data, htonl(KTUN_P_MAGIC));
-					set_byte4(endpoint->buf->data + 4, htonl(0x10030002));
-					set_byte6(endpoint->buf->data + 4 + 4, dmac); //smac
-					set_byte6(endpoint->buf->data + 4 + 4 + 6, smac); //dmac
-					set_byte4(endpoint->buf->data + 4 + 4 + 6 + 6, d_peer->addr);
-					set_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4, d_peer->port);
-					set_byte4(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2, peer->addr);
-					set_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2 + 4, peer->port);
-
-					addr.sin_addr.s_addr = d_peer->addr;
-					addr.sin_port = d_peer->port;
-					ssize_t s = sendto(endpoint->ktun_fd, endpoint->buf->data, endpoint->buf->len, 0, (const struct sockaddr *)&addr, sizeof(addr));
-					if (s == -1) {
-						//send fail
-						if (errno != EAGAIN && errno != EWOULDBLOCK) {
-							perror("ktun_send_send");
-						}
-					}
-				} while (0);
-			} else {
-				do {
-					endpoint->buf->idx = 0;
-					endpoint->buf->len = 4 + 4 + 6 + 6 + 4 + 2 + 4 + 2;
-					set_byte4(endpoint->buf->data, htonl(KTUN_P_MAGIC));
-					set_byte4(endpoint->buf->data + 4, htonl(0x10020002));
-					set_byte6(endpoint->buf->data + 4 + 4, smac); //smac
-					set_byte6(endpoint->buf->data + 4 + 4 + 6, dmac); //dmac
-					set_byte4(endpoint->buf->data + 4 + 4 + 6 + 6, peer->addr);
-					set_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4, peer->port);
-					set_byte4(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2, htonl(0));
-					set_byte2(endpoint->buf->data + 4 + 4 + 6 + 6 + 4 + 2 + 4, htons(0));
-
-					ssize_t s = sendto(endpoint->ktun_fd, endpoint->buf->data, endpoint->buf->len, 0, (const struct sockaddr *)&addr, sizeof(addr));
-					if (s == -1) {
-						//send fail
-						if (errno != EAGAIN && errno != EWOULDBLOCK) {
-							perror("ktun_send_send");
-						}
-					}
-				} while (0);
-			}
-		} else {
-			//unknown KTUN code
-			printf("unknown KTUN code=0x%08x\n", cmd);
-			//TODO
-		}
-	}
-	//end KTUN_P_MAGIC
-}
-
 static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 {
 	struct sockaddr_in addr;
@@ -356,9 +91,6 @@ static void endpoint_recv_cb(EV_P_ ev_io *w, int revents)
 	endpoint_t *endpoint = recv_ctx->endpoint;
 
 	fd = endpoint->fd;
-	if ((&endpoint->broadcast_recv_ctx->io) == w) {
-		fd = endpoint->broadcast_fd;
-	}
 
 	ssize_t r = recvfrom(fd, endpoint->buf->data, BUF_SIZE, 0, (struct sockaddr*) &addr, (socklen_t *) &addr_len);
 
@@ -1480,7 +1212,7 @@ int endpoint_create_fd(const char *host, const char *port)
 	return listen_sock;
 }
 
-endpoint_t *new_endpoint(int fd, int broadcast_fd, int ktun_fd)
+endpoint_t *new_endpoint(int fd)
 {
 	endpoint_t *endpoint = malloc(sizeof(endpoint_t));
 	memset(endpoint, 0, sizeof(endpoint_t));
@@ -1491,10 +1223,6 @@ endpoint_t *new_endpoint(int fd, int broadcast_fd, int ktun_fd)
 	endpoint->buf->len = 0;
 	endpoint->buf->idx = 0;
 
-	endpoint->broadcast_recv_ctx = malloc(sizeof(endpoint_ctx_t));
-	memset(endpoint->broadcast_recv_ctx, 0, sizeof(endpoint_ctx_t));
-	INIT_DLIST_HEAD(&endpoint->broadcast_recv_ctx->buf_head);
-
 	endpoint->recv_ctx = malloc(sizeof(endpoint_ctx_t));
 	memset(endpoint->recv_ctx, 0, sizeof(endpoint_ctx_t));
 	INIT_DLIST_HEAD(&endpoint->recv_ctx->buf_head);
@@ -1503,23 +1231,12 @@ endpoint_t *new_endpoint(int fd, int broadcast_fd, int ktun_fd)
 	memset(endpoint->send_ctx, 0, sizeof(endpoint_ctx_t));
 	INIT_DLIST_HEAD(&endpoint->send_ctx->buf_head);
 
-	endpoint->ktun_fd = ktun_fd;
-	endpoint->broadcast_fd = broadcast_fd;
 	endpoint->fd = fd;
-	endpoint->broadcast_recv_ctx->endpoint = endpoint;
 	endpoint->recv_ctx->endpoint = endpoint;
 	endpoint->send_ctx->endpoint = endpoint;
 
 	endpoint->active_ts = iclock();
 	
-	if (endpoint->ktun_fd != -1) {
-		endpoint->ktun_recv_ctx = malloc(sizeof(endpoint_ctx_t));
-		memset(endpoint->ktun_recv_ctx, 0, sizeof(endpoint_ctx_t));
-		INIT_DLIST_HEAD(&endpoint->ktun_recv_ctx->buf_head);
-		endpoint->ktun_recv_ctx->endpoint = endpoint;
-		ev_io_init(&endpoint->ktun_recv_ctx->io, endpoint_ktun_recv_cb, endpoint->ktun_fd, EV_READ);
-	}
-	ev_io_init(&endpoint->broadcast_recv_ctx->io, endpoint_recv_cb, endpoint->broadcast_fd, EV_READ);
 	ev_io_init(&endpoint->recv_ctx->io, endpoint_recv_cb, endpoint->fd, EV_READ);
 	ev_io_init(&endpoint->send_ctx->io, endpoint_send_cb, endpoint->fd, EV_WRITE);
 
@@ -1535,10 +1252,6 @@ static void free_endpoint(endpoint_t *endpoint)
 	}
 	free(endpoint->send_ctx);
 	free(endpoint->recv_ctx);
-	free(endpoint->broadcast_recv_ctx);
-	if (endpoint->ktun_fd != -1) {
-		free(endpoint->ktun_recv_ctx);
-	}
 	free(endpoint);
 }
 
@@ -1547,14 +1260,8 @@ void close_and_free_endpoint(EV_P_ endpoint_t *endpoint)
 	if (endpoint != NULL) {
 		ev_io_stop(EV_A_ & endpoint->send_ctx->io);
 		ev_io_stop(EV_A_ & endpoint->recv_ctx->io);
-		ev_io_stop(EV_A_ & endpoint->broadcast_recv_ctx->io);
 		ev_timer_stop(EV_A_ & endpoint->watcher);
 		close(endpoint->fd);
-		close(endpoint->broadcast_fd);
-		if (endpoint->ktun_fd != -1) {
-			ev_io_stop(EV_A_ & endpoint->ktun_recv_ctx->io);
-			close(endpoint->ktun_fd);
-		}
 		do {
 			endpoint_buffer_t *pos, *n;
 			dlist_for_each_entry_safe(pos, n, &endpoint->watcher_send_buf_head, list) {
@@ -1573,16 +1280,6 @@ void close_and_free_endpoint(EV_P_ endpoint_t *endpoint)
 		} while (0);
 		do {
 			endpoint_buffer_t *pos, *n;
-			/* XXX: we never use recv_ctx->buf_head
-			dlist_for_each_entry_safe(pos, n, &endpoint->broadcast_recv_ctx->buf_head, list) {
-				dlist_del(&pos->list);
-				free(pos);
-			}
-			dlist_for_each_entry_safe(pos, n, &endpoint->recv_ctx->buf_head, list) {
-				dlist_del(&pos->list);
-				free(pos);
-			}
-			*/
 			dlist_for_each_entry_safe(pos, n, &endpoint->send_ctx->buf_head, list) {
 				dlist_del(&pos->list);
 				free(pos);
@@ -1702,42 +1399,11 @@ int endpoint_select_relay_id(const unsigned char *smac, const unsigned char *dma
 	return -1;
 }
 
-int endpoint_relay_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
-{
-	endpoint_buffer_t *eb;
-
-	//send to ktun
-	eb = malloc(sizeof(endpoint_buffer_t));
-	memset(eb, 0, sizeof(endpoint_buffer_t));
-
-	memcpy(eb->dmac, id, 6);
-	eb->ptype = 2;
-	eb->endpoint = endpoint;
-	eb->repeat = 30;
-	eb->addr = endpoint->ktun_addr;
-	eb->port = endpoint->ktun_port;
-
-	//[KTUN_P_MAGIC|0x00000006|smac|dmac] smac tell ktun I want relay to dmac
-	eb->buf.idx = 0;
-	eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
-	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
-	set_byte4(eb->buf.data + 4, htonl(0x00000006));
-	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
-	set_byte6(eb->buf.data + 4 + 4 + 6, id); //dmac
-
-	eb->recycle = default_eb_recycle;
-	dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
-
-	ev_io_start(EV_A_ & endpoint->send_ctx->io);
-
-	return 0;
-}
-
 int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 {
 	endpoint_buffer_t *eb;
 
-	//send to ktun
+	//send to peer
 	eb = malloc(sizeof(endpoint_buffer_t));
 	memset(eb, 0, sizeof(endpoint_buffer_t));
 
@@ -1745,30 +1411,8 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	eb->ptype = 1;
 	eb->endpoint = endpoint;
 	eb->repeat = 30;
-	eb->addr = endpoint->ktun_addr;
-	eb->port = endpoint->ktun_port;
-
-	//[KTUN_P_MAGIC|0x00000002|smac|dmac] smac tell ktun I want to connect dmac
-	eb->buf.idx = 0;
-	eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
-	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
-	set_byte4(eb->buf.data + 4, htonl(0x00000002));
-	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
-	set_byte6(eb->buf.data + 4 + 4 + 6, id); //dmac
-
-	eb->recycle = default_eb_recycle;
-	dlist_add_tail(&eb->list, &endpoint->send_ctx->buf_head);
-
-	//send to broadcast
-	eb = malloc(sizeof(endpoint_buffer_t));
-	memset(eb, 0, sizeof(endpoint_buffer_t));
-
-	memcpy(eb->dmac, id, 6);
-	eb->ptype = 0;
-	eb->endpoint = endpoint;
-	eb->repeat = 30;
-	eb->addr = endpoint->broadcast_addr;
-	eb->port = endpoint->broadcast_port;
+	eb->addr = 0;
+	eb->port = 0;
 
 	//[KTUN_P_MAGIC|0x00000005|smac|dmac] smac broadcast I want to connect dmac
 	eb->buf.idx = 0;
@@ -1785,33 +1429,6 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 
 	return 0;
 }
-
-void endpoint_ktun_start(endpoint_t *endpoint)
-{
-	endpoint_buffer_t *eb;
-
-	eb = malloc(sizeof(endpoint_buffer_t));
-	memset(eb, 0, sizeof(endpoint_buffer_t));
-
-	eb->endpoint = endpoint;
-	eb->repeat = -1;
-	eb->interval = 10;
-	eb->recycle = default_eb_recycle;
-	eb->addr = endpoint->ktun_addr;
-	eb->port = endpoint->ktun_port;
-
-	printf("init send to ktun=%u.%u.%u.%u:%u\n", NIPV4_ARG(eb->addr), ntohs(eb->port));
-
-	//[KTUN_P_MAGIC|0x00000001|smac] smac tell ktun I ready here
-	eb->buf.idx = 0;
-	eb->buf_len = eb->buf.len = 4 + 4 + 6;
-	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
-	set_byte4(eb->buf.data + 4, htonl(0x00000001));
-	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
-
-	dlist_add_tail(&eb->list, &endpoint->watcher_send_buf_head);
-}
-
 
 struct hlist_head *peer_pipe_hash = NULL;
 unsigned int peer_pipe_hash_size = 1024;
@@ -1993,14 +1610,9 @@ int endpoint_peer_pipe_insert(pipe_t *pipe)
 	return 0;
 }
 
-endpoint_t *endpoint_init(EV_P_ const unsigned char *id,
-		const char *ktun, const char *ktun_port,
-		const char *bktun, const char *bktun_port,
-		int ktun_sever)
+endpoint_t *endpoint_init(EV_P_ const unsigned char *id)
 {
 	int fd;
-	int bktun_fd;
-	int ktun_fd = -1;
 	endpoint_t *endpoint;
 
 	fd = endpoint_create_fd("0.0.0.0", "0");
@@ -2009,41 +1621,12 @@ endpoint_t *endpoint_init(EV_P_ const unsigned char *id,
 	}
 	setnonblocking(fd);
 
-	bktun_fd = endpoint_create_fd("0.0.0.0", bktun_port);
-	if (bktun_fd == -1) {
-		close(fd);
-		return NULL;
-	}
-	setnonblocking(bktun_fd);
-
-	if (ktun_sever) {
-		ktun_fd = endpoint_create_fd("0.0.0.0", ktun_port);
-		if (ktun_fd == -1) {
-			close(bktun_fd);
-			close(fd);
-			return NULL;
-		}
-		setnonblocking(ktun_fd);
-	}
-
-	endpoint = new_endpoint(fd, bktun_fd, ktun_fd);
+	endpoint = new_endpoint(fd);
 	if (endpoint == NULL) {
-		close(bktun_fd);
-		close(fd);
 		return NULL;
 	}
 
 	memcpy(endpoint->id, id, 6);
-
-	if (endpoint_getaddrinfo(ktun, ktun_port, &endpoint->ktun_addr, &endpoint->ktun_port) != 0) {
-		close_and_free_endpoint(EV_A_ endpoint);
-		return NULL;
-	}
-	if (endpoint_getaddrinfo(bktun, bktun_port, &endpoint->broadcast_addr, &endpoint->broadcast_port) != 0) {
-		close_and_free_endpoint(EV_A_ endpoint);
-		return NULL;
-	}
-	endpoint_ktun_start(endpoint);
 
 	return endpoint;
 }

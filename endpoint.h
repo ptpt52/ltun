@@ -52,20 +52,11 @@ typedef struct endpoint_t {
 	int stage;
 
 	int fd;
-	int broadcast_fd;
-	int ktun_fd;
 	int ticks;
 	unsigned char id[6];
 
-	__be32 ktun_addr;
-	__be16 ktun_port;
-	__be32 broadcast_addr;
-	__be16 broadcast_port;
-
 	buffer_t *buf;
 
-	struct endpoint_ctx *ktun_recv_ctx;
-	struct endpoint_ctx *broadcast_recv_ctx;
 	struct endpoint_ctx *recv_ctx;
 	struct endpoint_ctx *send_ctx;
 	struct dlist_head watcher_send_buf_head;
@@ -209,9 +200,6 @@ extern int endpoint_select_relay_id(const unsigned char *smac, const unsigned ch
 extern peer_t *endpoint_peer_lookup(unsigned char *id);
 extern int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id);
 
-extern void endpoint_ktun_start(endpoint_t *endpoint);
-
-
 extern int endpoint_peer_init(void);
 extern void endpoint_peer_exit(void);
 
@@ -223,10 +211,7 @@ extern pipe_t *endpoint_peer_pipe_select(peer_t *peer);
 extern pipe_t *endpoint_peer_pipe_lookup(__be32 addr, __be16 port);
 extern int endpoint_peer_pipe_insert(pipe_t *pipe);
 
-extern endpoint_t *endpoint_init(EV_P_ const unsigned char *id,
-		const char *ktun, const char *ktun_port,
-		const char *bktun, const char *bktun_port,
-		int ktun_server);
+extern endpoint_t *endpoint_init(EV_P_ const unsigned char *id);
 extern void close_and_free_endpoint(EV_P_ endpoint_t *endpoint);
 
 #endif /* _ENDPOINT_H_ */
