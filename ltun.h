@@ -85,6 +85,11 @@ typedef struct local_t {
 
 extern int verbose;
 
+extern __be16 _local_udp_port;
+extern __be32 _local_udp_ip;
+extern __be16 _target_udp_port;
+extern __be32 _target_udp_ip;
+
 static inline void FATAL(const char *msg)
 {
 	fprintf(stderr, "%s", msg);

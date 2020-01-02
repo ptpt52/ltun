@@ -211,7 +211,7 @@ extern pipe_t *endpoint_peer_pipe_select(peer_t *peer);
 extern pipe_t *endpoint_peer_pipe_lookup(__be32 addr, __be16 port);
 extern int endpoint_peer_pipe_insert(pipe_t *pipe);
 
-extern endpoint_t *endpoint_init(EV_P_ const unsigned char *id);
+extern endpoint_t *endpoint_init(EV_P_ const unsigned char *id, const char *local_udp_port);
 extern void close_and_free_endpoint(EV_P_ endpoint_t *endpoint);
 
 #endif /* _ENDPOINT_H_ */

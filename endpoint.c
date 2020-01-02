@@ -1209,6 +1209,16 @@ int endpoint_create_fd(const char *host, const char *port)
 
 	freeaddrinfo(result);
 
+	do {
+		struct sockaddr_storage storage;
+		struct sockaddr_in *addr = (struct sockaddr_in *)&storage;
+		socklen_t len = sizeof(struct sockaddr_storage);
+		memset(addr, 0, len);
+		getsockname(listen_sock, (struct sockaddr *)addr, &len);
+		_local_udp_ip = addr->sin_addr.s_addr;
+		_local_udp_port = addr->sin_port;
+	} while (0);
+
 	return listen_sock;
 }
 
@@ -1411,14 +1421,14 @@ int endpoint_connect_to_peer(EV_P_ endpoint_t *endpoint, unsigned char *id)
 	eb->ptype = 1;
 	eb->endpoint = endpoint;
 	eb->repeat = 30;
-	eb->addr = 0;
-	eb->port = 0;
+	eb->addr = _target_udp_ip;
+	eb->port = _target_udp_port;
 
-	//[KTUN_P_MAGIC|0x00000005|smac|dmac] smac broadcast I want to connect dmac
+	//[KTUN_P_MAGIC|0x00000003|smac|dmac] smac tell dmac I am connecting to dmac
 	eb->buf.idx = 0;
 	eb->buf_len = eb->buf.len = 4 + 4 + 6 + 6;
 	set_byte4(eb->buf.data, htonl(KTUN_P_MAGIC));
-	set_byte4(eb->buf.data + 4, htonl(0x00000005));
+	set_byte4(eb->buf.data + 4, htonl(0x00000003));
 	set_byte6(eb->buf.data + 4 + 4, endpoint->id); //smac
 	set_byte6(eb->buf.data + 4 + 4 + 6, id); //dmac
 
@@ -1610,12 +1620,12 @@ int endpoint_peer_pipe_insert(pipe_t *pipe)
 	return 0;
 }
 
-endpoint_t *endpoint_init(EV_P_ const unsigned char *id)
+endpoint_t *endpoint_init(EV_P_ const unsigned char *id, const char *local_udp_port)
 {
 	int fd;
 	endpoint_t *endpoint;
 
-	fd = endpoint_create_fd("0.0.0.0", "0");
+	fd = endpoint_create_fd("127.0.0.1", local_udp_port);
 	if (fd == -1) {
 		return NULL;
 	}

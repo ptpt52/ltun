@@ -52,7 +52,9 @@ char *local_udp_port = "0";
 char *target_udp_port = "0";
 
 __be16 _local_udp_port = 0;
+__be32 _local_udp_ip = 0;
 __be16 _target_udp_port = 0;
+__be32 _target_udp_ip = 0;
 
 __be32 _local_ip = 0;
 __be16 _local_port = 0;
@@ -1405,7 +1407,7 @@ int main(int argc, char **argv)
 	endpoint_peer_init();
 	__rawkcp_init();
 
-	default_endpoint = endpoint_init(loop, local_mac);
+	default_endpoint = endpoint_init(loop, local_mac, local_udp_port);
 	if (default_endpoint == NULL) {
 		goto fail_out;
 	}
