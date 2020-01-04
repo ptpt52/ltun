@@ -1202,18 +1202,8 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 	}
 }
 
-static void parse_optarg_mac(unsigned char *mac, const char *optarg)
+static void parse_optarg_uuid(unsigned char *uuid, const char *optarg)
 {
-	int err;
-	uuid_t uu;
-	uuid_parse(optarg, mac);
-	return;
-	if (err == 0) {
-		memcpy(mac, &uu, 16);
-	} else {
-		memset(mac, 0, 16);
-	}
-#if 0
 	int n;
 	unsigned int x[16];
 	//123e4567-e89b-12d3-a456-426655440000
@@ -1223,10 +1213,9 @@ static void parse_optarg_mac(unsigned char *mac, const char *optarg)
 	if (n == 16) {
 		int i;
 		for (i = 0; i < 16; i++) {
-			mac[i] = x[i];
+			uuid[i] = x[i];
 		}
 	}
-#endif
 }
 
 #ifdef LTUN_LIB
@@ -1274,12 +1263,12 @@ int main(int argc, char **argv)
 	local_host = s_local_host;
 	local_port = s_local_port;
 	if (s_local_mac) {
-		parse_optarg_mac(local_mac, s_local_mac);
+		parse_optarg_uuid(local_mac, s_local_mac);
 	}
 	target_host = s_target_host;
 	target_port = s_target_port;
 	if (s_target_mac) {
-		parse_optarg_mac(target_mac, s_target_mac);
+		parse_optarg_uuid(target_mac, s_target_mac);
 	}
 	if (s_local_udp_port) {
 		local_udp_port = s_local_udp_port;
@@ -1301,7 +1290,7 @@ int main(int argc, char **argv)
 				local_port = optarg;
 				break;
 			case 'i':
-				parse_optarg_mac(local_mac, optarg);
+				parse_optarg_uuid(local_mac, optarg);
 				break;
 			case 'S':
 				target_host = optarg;
@@ -1310,7 +1299,7 @@ int main(int argc, char **argv)
 				target_port = optarg;
 				break;
 			case 'I':
-				parse_optarg_mac(target_mac, optarg);
+				parse_optarg_uuid(target_mac, optarg);
 				break;
 			case 'u':
 				local_udp_port = optarg;

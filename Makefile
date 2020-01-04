@@ -1,5 +1,5 @@
 INCS += -I.
-LIBS += -L. -lev -lm -luuid
+LIBS += -L. -lev -lm
 
 LTUN_BIN = ltun
 LTUN_LIB = libltun.so
