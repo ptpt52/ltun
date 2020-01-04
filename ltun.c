@@ -19,6 +19,7 @@
 #include <netinet/tcp.h>
 #include <pthread.h>
 #include <sys/un.h>
+#include <uuid/uuid.h>
 
 #include <ifaddrs.h>
 #include <net/if.h>
@@ -1203,6 +1204,16 @@ static void accept_cb(EV_P_ ev_io *w, int revents)
 
 static void parse_optarg_mac(unsigned char *mac, const char *optarg)
 {
+	int err;
+	uuid_t uu;
+	uuid_parse(optarg, mac);
+	return;
+	if (err == 0) {
+		memcpy(mac, &uu, 16);
+	} else {
+		memset(mac, 0, 16);
+	}
+#if 0
 	int n;
 	unsigned int x[16];
 	//123e4567-e89b-12d3-a456-426655440000
@@ -1215,6 +1226,7 @@ static void parse_optarg_mac(unsigned char *mac, const char *optarg)
 			mac[i] = x[i];
 		}
 	}
+#endif
 }
 
 #ifdef LTUN_LIB
@@ -1356,7 +1368,7 @@ int main(int argc, char **argv)
 
 	printf("local_mac: %02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x\n",
 			local_mac[0], local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5], local_mac[6], local_mac[7],
-			local_mac[6], local_mac[9], local_mac[10], local_mac[11], local_mac[12], local_mac[13], local_mac[14], local_mac[15]);
+			local_mac[8], local_mac[9], local_mac[10], local_mac[11], local_mac[12], local_mac[13], local_mac[14], local_mac[15]);
 	printf("target_mac: %02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x\n",
 			target_mac[0], target_mac[1], target_mac[2], target_mac[3], target_mac[4], target_mac[5], target_mac[6], target_mac[7],
 			target_mac[8], target_mac[9], target_mac[10], target_mac[11], target_mac[12], target_mac[13], target_mac[14], target_mac[15]);
